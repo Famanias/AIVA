@@ -1,0 +1,26 @@
+{
+  "name": "aiva-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "type-check": "turbo type-check",
+    "clean": "turbo clean && rimraf node_modules",
+    "test:pipeline": "tsx scripts/certify_pipeline.ts --suite=golden",
+    "bootstrap": "pnpm install && bash packages/database/scripts/validate_migrations.sh",
+    "certify": "CI_MOCK_PROVIDERS=true pnpm test:pipeline"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "rimraf": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "job_id": "test-golden-001",
+  "project_id": "proj-abc",
+  "topic": "The Roman Empire",
+  "style": "documentary",
+  "expected_ir": {
+    "version": "1.0.0",
+    "timeline": {
+      "durationInFrames": 1350,
+      "fps": 30
+    }
+  }
+}

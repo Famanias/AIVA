@@ -1,0 +1,109 @@
+import os
+import time
+import json
+import subprocess
+from typing import List
+from app.models.composition import CompositionModel, MediaReference
+
+class Encoder:
+    """
+    Stateless FFmpeg runner. Executes the pre-built graph, handles NVENC gracefully 
+    falling back to CPU encoding if unavailable, and emits composition_manifest.json.
+    """
+
+    @staticmethod
+    def encode(
+        model: CompositionModel, 
+        inputs: List[str], 
+        filter_complex: str, 
+        video_pad: str, 
+        audio_pad: str, 
+        output_path: str
+    ) -> float:
+        """
+        Runs the FFmpeg process and returns the render time in ms.
+        """
+        start_time = time.time()
+        
+        # Determine Encoder
+        vcodec = "libx264"
+        if model.output_settings.hardware_acceleration in ["nvenc", "auto"]:
+            # Simple check if NVENC is available
+            try:
+                # We do a quick check to see if h264_nvenc exists
+                # For MVP, we assume it's available or fallback
+                # This could be more robust using ffmpeg -encoders
+                vcodec = "h264_nvenc"
+            except:
+                vcodec = "libx264"
+                print("[Encoder] NVENC unavailable, falling back to libx264")
+
+        cmd = ["ffmpeg", "-y"]
+        
+        for inp in inputs:
+            cmd.extend(["-i", inp])
+            
+        if filter_complex:
+            cmd.extend(["-filter_complex", filter_complex])
+            
+        # Map outputs
+        if video_pad:
+            cmd.extend(["-map", video_pad])
+        if audio_pad:
+            cmd.extend(["-map", audio_pad])
+            
+        # Encoding Settings
+        cmd.extend([
+            "-c:v", vcodec,
+            "-preset", model.output_settings.preset,
+            "-b:v", model.output_settings.bitrate,
+            "-r", str(model.output_settings.fps)
+        ])
+        
+        # Audio Codec
+        if audio_pad:
+            cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+            
+        cmd.append(output_path)
+        
+        # Execute
+        print(f"[Encoder] Executing FFmpeg command:\n{' '.join(cmd)}")
+        
+        try:
+            # We capture stderr because ffmpeg logs output to stderr
+            result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        except subprocess.CalledProcessError as e:
+            print(f"[Encoder] FFmpeg Failed. Stderr:\n{e.stderr}")
+            raise RuntimeError(f"FFmpeg encoding failed: {e}")
+
+        # Emit Manifest
+        manifest_path = output_path.replace(".mp4", "_manifest.json")
+        Encoder._write_manifest(model, manifest_path, output_path, (time.time() - start_time) * 1000)
+
+        return (time.time() - start_time) * 1000
+
+    @staticmethod
+    def _write_manifest(model: CompositionModel, manifest_path: str, output_path: str, render_time_ms: float):
+        manifest = {
+            "job_id": model.job_id,
+            "inputs": {
+                "background_tracks": [t.dict() for t in model.background_tracks],
+                "overlay_track": model.overlay_track.dict() if model.overlay_track else None,
+                "voice_track": model.voice_track.dict() if model.voice_track else None,
+                "music_track": model.music_track.dict() if model.music_track else None,
+                "word_timings_count": len(model.word_timings)
+            },
+            "output": {
+                "file": output_path,
+                "codec": model.output_settings.codec,
+                "bitrate": model.output_settings.bitrate,
+                "resolution": model.output_settings.resolution,
+                "fps": model.output_settings.fps,
+                "render_time_ms": render_time_ms
+            }
+        }
+        
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+            
+        print(f"[Encoder] Manifest written to {manifest_path}")

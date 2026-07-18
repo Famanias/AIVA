@@ -1,0 +1,6 @@
+{
+  "name": "@aiva/database",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Supabase schema definitions, migrations, and seed data for AIVA."
+}

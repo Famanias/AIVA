@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Build outputs
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Test coverage
+coverage/
+.pytest_cache/
+.mypy_cache/
+
+# Docker
+*.tar
+
+# Media artifacts (generated during runtime)
+apps/workers/app/cache/
+apps/workers/app/storage/tmp/
+apps/template-renderer/output/
+
+# Python model downloads (large binary files)
+apps/workers/models/whisper/
+apps/workers/models/kokoro/
+apps/workers/models/coqui/
+apps/workers/models/sdxl/
+
+.agents/*
+
+# AIVA AI artifacts
+/walkthroughs/*
+/implementation-plans/*
+/implementation plans/*
+.artifacts/
+
+# Supabase local emulator state
+supabase/.temp/
+supabase/.branches/

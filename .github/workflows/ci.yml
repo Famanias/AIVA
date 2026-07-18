@@ -1,0 +1,101 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  fast-checks:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Lint
+        run: pnpm lint
+        
+      - name: Typecheck
+        run: pnpm typecheck
+
+  unit-integration:
+    name: Unit & Integration Tests
+    needs: fast-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          cd apps/workers && pip install -r requirements.txt
+          
+      - name: Run Python Unit Tests
+        run: cd apps/workers && pytest tests/unit
+        
+      - name: Run Integration Tests
+        run: cd apps/workers && pytest tests/integration
+
+  golden-suite:
+    name: Golden Suite Certification
+    needs: unit-integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 8
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+        
+      - name: Validate Migrations
+        run: bash packages/database/scripts/validate_migrations.sh
+        
+      - name: Start Infrastructure (Redis)
+        run: docker compose -f infra/docker-compose.yml up -d redis
+        
+      - name: Run Golden Suite Certification
+        env:
+          CI_MOCK_PROVIDERS: "true"
+        run: pnpm certify
+        
+      - name: Upload Validation Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: validation-report
+          path: .artifacts/validation_report.md
