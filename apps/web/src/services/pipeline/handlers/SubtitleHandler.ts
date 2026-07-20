@@ -1,25 +1,26 @@
 import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
-import { WorkerGateway } from '../WorkerGateway'
+import { workerGateway } from '../WorkerGateway'
 
 export class SubtitleHandler extends BaseHandler {
-  async execute(context: PipelineContext): Promise<void> {
-    const state = context.getState()
+  getTimeoutMs(): number {
+    return 5 * 60 * 1000 // 5 minutes
+  }
+
+  async execute(context: PipelineContext): Promise<string | null> {
+    const state = context.state
 
     if (!state.voice?.scene_voiceovers || state.voice.scene_voiceovers.length === 0) {
       throw new Error('SubtitleHandler requires scene_voiceovers from the voice stage.')
     }
 
-    context.log('Dispatching job to Python Subtitle Extraction Worker...')
+    await context.logger.info('Dispatching job to Python Subtitle Extraction Worker...')
     
-    const response = await WorkerGateway.post('/pipeline/subtitle_extraction', {
-      trace_id: state.job.id,
-      project_id: state.project.id,
-      workspace_id: 'default',
+    const response = await workerGateway.execute<any>('/pipeline/subtitle_extraction', {
+      trace_id: context.job.id,
+      project_id: context.project.id,
       scene_voiceovers: state.voice.scene_voiceovers
-    }, {
-      timeoutMs: 5 * 60 * 1000
-    })
+    }, 5 * 60 * 1000)
 
     if (response.status !== 'success') {
       throw new Error(`Subtitle extraction failed: ${response.error || 'Unknown error'}`)
@@ -27,10 +28,12 @@ export class SubtitleHandler extends BaseHandler {
 
     const updatedState = { ...state }
     
-    // Assign word timings to state
-    updatedState.voice.wordTimings = response.data.wordTimings
+    // Assign subtitles to state
+    updatedState.voice.subtitles = response.data.subtitles
 
-    context.updateState(updatedState)
-    context.log(`Subtitle extraction completed successfully. Extracted ${response.data.wordTimings?.length || 0} words.`)
+    Object.assign(context.state, updatedState)
+    await context.logger.info(`Subtitle extraction completed successfully. Extracted ${response.data.subtitles?.length || 0} scenes.`)
+
+    return 'assets'
   }
 }

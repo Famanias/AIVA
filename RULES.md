@@ -115,7 +115,21 @@ Content generation and rendering must remain independent systems.
 
 ---
 
-# Rule 7 — Zero Hardcoding
+# Rule 7 — Architecture Must Remain Media-Length Agnostic
+
+The architecture must never hardcode assumptions about:
+* video duration (e.g., 60 seconds or 30 minutes)
+* aspect ratios (e.g., 9:16 or 16:9)
+* pacing
+* scene counts
+
+These are product concerns, not architectural constraints.
+
+Always express these assumptions through configurable `GenerationProfile` or `PlatformProfile` payloads. Phase 1 targets short-form content, but the pipeline itself must remain fully capable of supporting long-form documentaries without code changes.
+
+---
+
+# Rule 8 — Zero Hardcoding
 
 Never hardcode:
 
@@ -133,7 +147,7 @@ Configuration, prompts, and templates must be centralized and injected into the 
 
 ---
 
-# Rule 8 — APIs Must Be Stable and Validated
+# Rule 9 — APIs Must Be Stable and Validated
 
 Every API should:
 
@@ -153,7 +167,7 @@ Never trust:
 
 ---
 
-# Rule 9 — Long-Running Work Must Be Resumable
+# Rule 10 — Long-Running Work Must Be Resumable
 
 Every long-running workflow should be designed for recovery.
 
@@ -171,7 +185,7 @@ Design for idempotency whenever possible.
 
 ---
 
-# Rule 10 — Simplicity First
+# Rule 11 — Simplicity First
 
 Choose the simplest explicit solution that satisfies the current requirements.
 
@@ -183,7 +197,7 @@ Complexity must always justify itself.
 
 ---
 
-# Rule 11 — Documentation Is Part of the System
+# Rule 12 — Documentation Is Part of the System
 
 Documentation must evolve with the implementation.
 
@@ -202,7 +216,7 @@ Documentation should never drift away from the codebase.
 
 ---
 
-# Rule 12 — Dependencies Must Justify Their Existence
+# Rule 13 — Dependencies Must Justify Their Existence
 
 Before introducing a dependency, determine:
 
@@ -214,7 +228,7 @@ Avoid unnecessary dependencies.
 
 ---
 
-# Rule 13 — Human Approval for Architectural Changes
+# Rule 14 — Human Approval for Architectural Changes
 
 No AI agent may significantly modify the project's architecture without explicit user approval.
 

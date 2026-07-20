@@ -63,11 +63,6 @@ export class RemotionBackend implements IRenderBackend {
       codec: 'vp9',
       outputLocation: outputPath,
       inputProps,
-      chromiumOptions: {
-        // Chromium pool configuration injected via RenderConfig
-        // We cannot use more concurrency than CPUs or what the config specifies
-        browserExecutable: undefined, // Let Remotion find it
-      },
       concurrency: job.config.maxConcurrency
     })
 

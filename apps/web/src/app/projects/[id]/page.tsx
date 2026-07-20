@@ -1,20 +1,20 @@
 import React from 'react'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import { Database } from '@aiva/shared-types/src/database.types'
-import { DashboardProvider } from '@/providers/DashboardProvider'
-import { SystemHealthPanel } from '@/components/dashboard/SystemHealthPanel'
-import { JobMetadataPanel } from '@/components/dashboard/JobMetadataPanel'
-import { CurrentJobStatus } from '@/components/dashboard/CurrentJobStatus'
-import { TimelineView } from '@/components/dashboard/TimelineView'
-import { PipelineStatePanel } from '@/components/dashboard/PipelineStatePanel'
-import { RawStateViewer } from '@/components/dashboard/RawStateViewer'
-import { LiveEventLog } from '@/components/dashboard/LiveEventLog'
-import { ArtifactsPanel } from '@/components/dashboard/ArtifactsPanel'
+import { Database } from '@aiva/shared-types'
+import { DashboardProvider } from '../../../providers/DashboardProvider'
+import { SystemHealthPanel } from '../../../components/dashboard/SystemHealthPanel'
+import { JobMetadataPanel } from '../../../components/dashboard/JobMetadataPanel'
+import { CurrentJobStatus } from '../../../components/dashboard/CurrentJobStatus'
+import { TimelineView } from '../../../components/dashboard/TimelineView'
+import { PipelineStatePanel } from '../../../components/dashboard/PipelineStatePanel'
+import { RawStateViewer } from '../../../components/dashboard/RawStateViewer'
+import { LiveEventLog } from '../../../components/dashboard/LiveEventLog'
+import { ArtifactsPanel } from '../../../components/dashboard/ArtifactsPanel'
 import { redirect } from 'next/navigation'
 
-export default async function OperatorDashboard({ params }: { params: { id: string } }) {
-  const cookieStore = cookies()
+export default async function OperatorDashboard({ params }: { params: Promise<{ id: string }> }) {
+  const cookieStore = await cookies()
   const supabase = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -35,11 +35,13 @@ export default async function OperatorDashboard({ params }: { params: { id: stri
     redirect('/auth/login')
   }
 
+  const { id } = await params
+
   // Fetch initial project data
   const { data: project } = await supabase
     .from('projects')
     .select('*')
-    .eq('id', params.id)
+    .eq('id', id)
     .single()
 
   if (!project) {
@@ -55,8 +57,9 @@ export default async function OperatorDashboard({ params }: { params: { id: stri
     .limit(1)
     .single()
 
-  // Fetch initial events
   let initialEvents: any[] = []
+  let initialLogs: any[] = []
+  
   if (job) {
     const { data: events } = await supabase
       .from('job_events')
@@ -65,6 +68,15 @@ export default async function OperatorDashboard({ params }: { params: { id: stri
       .order('created_at', { ascending: true })
     
     initialEvents = events || []
+
+    const { data: logs } = await supabase
+      .from('pipeline_logs')
+      .select('*')
+      .eq('job_id', job.id)
+      .order('created_at', { ascending: false }) // Newest first
+      .limit(500)
+    
+    initialLogs = logs || []
   }
 
   return (
@@ -73,6 +85,7 @@ export default async function OperatorDashboard({ params }: { params: { id: stri
       initialProject={project} 
       initialJob={job || null} 
       initialEvents={initialEvents}
+      initialLogs={initialLogs}
     >
       <div className="min-h-screen bg-black p-4 lg:p-8">
         <div className="max-w-7xl mx-auto space-y-6">

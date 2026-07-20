@@ -1,26 +1,27 @@
 import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
-import { WorkerGateway } from '../WorkerGateway'
+import { workerGateway } from '../WorkerGateway'
 
 export class VoiceoverHandler extends BaseHandler {
-  async execute(context: PipelineContext): Promise<void> {
-    const state = context.getState()
+  getTimeoutMs(): number {
+    return 15 * 60 * 1000 // 15 minutes
+  }
+
+  async execute(context: PipelineContext): Promise<string | null> {
+    const state = context.state
 
     if (!state.scenes || state.scenes.length === 0) {
       throw new Error('VoiceoverHandler requires populated scenes from the script stage.')
     }
 
-    context.log('Dispatching job to Python Voiceover Worker...')
+    await context.logger.info('Dispatching job to Python Voiceover Worker...')
     
-    const response = await WorkerGateway.post('/pipeline/voiceover', {
-      trace_id: state.job.id,
-      project_id: state.project.id,
-      workspace_id: 'default',
+    const response = await workerGateway.execute<any>('/pipeline/voiceover', {
+      trace_id: context.job.id,
+      project_id: context.project.id,
       scenes: state.scenes,
       voice_id: 'en-US-AriaNeural'
-    }, {
-      timeoutMs: 5 * 60 * 1000
-    })
+    }, 5 * 60 * 1000)
 
     if (response.status !== 'success') {
       throw new Error(`Voiceover generation failed: ${response.error || 'Unknown error'}`)
@@ -32,15 +33,15 @@ export class VoiceoverHandler extends BaseHandler {
       updatedState.voice = {}
     }
 
-    // Assign the generated audio path to state
-    updatedState.voice.audioUrl = response.data.voiceover_url
-    
-    // Some endpoints return the scene voiceovers object needed for subtitles
-    if (response.data.scene_voiceovers) {
-      updatedState.voice.scene_voiceovers = response.data.scene_voiceovers
+    if (response.data.voiceovers) {
+      updatedState.voice.scene_voiceovers = response.data.voiceovers
+      // Just take the first one for logging if needed
+      updatedState.voice.audioUrl = response.data.voiceovers[0]?.audio_url
     }
 
-    context.updateState(updatedState)
-    context.log(`Voiceover generated successfully: ${updatedState.voice.audioUrl}`)
+    Object.assign(context.state, updatedState)
+    await context.logger.info(`Voiceover generated successfully: ${updatedState.voice.audioUrl}`)
+
+    return 'subtitle_extraction'
   }
 }

@@ -1,20 +1,14 @@
-import { pipelineQueue } from '@/lib/queue/client'
+import { queueManager } from './queue/BullMQQueueManager'
 
 export class QueueService {
   /**
-   * Enqueues a pipeline job into the BullMQ broker.
+   * Enqueues a pipeline job into the Queue Manager.
    * This service is decoupled from the business logic and only knows about job IDs.
    * 
    * @param jobId The Supabase job ID to process
    * @param priority Lower numbers = higher priority
    */
   static async enqueuePipelineJob(jobId: string, priority: number = 0) {
-    console.log(`[QueueService] Enqueueing pipeline job: ${jobId} (priority: ${priority})`)
-    
-    await pipelineQueue.add(
-      'process-pipeline', 
-      { jobId }, 
-      { priority }
-    )
+    await queueManager.enqueueJob(jobId, priority)
   }
 }

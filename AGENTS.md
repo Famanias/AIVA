@@ -43,6 +43,18 @@ Every engineering decision should support this goal.
 
 ---
 
+# Generation Assumptions (CRITICAL)
+
+AIVA is a configurable AI video generation platform.
+
+**Unless explicitly instructed otherwise, assume the active GenerationProfile is the Phase 1 Short-Form profile.**
+
+This means you should assume videos are short (30-120s), vertical (9:16), and use high-retention pacing (hook in first 3 seconds, fast narrative beats).
+
+However, **do not hardcode these assumptions into the architecture**. The architecture must remain media-length agnostic so it can support long-form generation in future phases.
+
+---
+
 # Documentation Hierarchy
 
 When multiple documents exist, always follow this order of authority.
@@ -422,6 +434,7 @@ Whenever implementation changes project status, architecture, security, or devel
 - CONTEXT.md
 - TASKS.md
 - MEMORY.md
+- ADR.md
 - ROADMAP.md (only for major roadmap changes)
 - SECURITY.md (only if security architecture changes)
 - README.md (only if setup or project structure changes)

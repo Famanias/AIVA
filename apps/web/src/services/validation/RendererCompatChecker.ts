@@ -1,8 +1,8 @@
-import { PipelineIR } from '../../../../../template-renderer/src/types/PipelineIR'
-import { generateTimeline } from '../../../../../template-renderer/src/core/TimelineGenerator'
-import { DEFAULT_RENDER_CONFIG } from '../../../../../template-renderer/src/core/RenderConfig'
-import { templateRegistry } from '../../../../../template-renderer/src/core/TemplateRegistry'
-import { AssetResolver } from '../../../../../template-renderer/src/core/AssetResolver'
+import { PipelineIR } from '../../../../../apps/template-renderer/src/types/PipelineIR'
+import { generateTimeline } from '../../../../../apps/template-renderer/src/core/TimelineGenerator'
+import { DEFAULT_RENDER_CONFIG } from '../../../../../apps/template-renderer/src/core/RenderConfig'
+import { templateRegistry } from '../../../../../apps/template-renderer/src/core/TemplateRegistry'
+import { AssetResolver } from '../../../../../apps/template-renderer/src/core/AssetResolver'
 
 export class RendererCompatChecker {
   static async check(ir: PipelineIR): Promise<string[]> {

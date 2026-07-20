@@ -1,8 +1,8 @@
 # AIVA
 
-AIVA is an AI-powered YouTube content production platform that automates the end-to-end pipeline from topic to published video. 
+AIVA is a configurable AI video generation platform. Phase 1 focuses on fast, high-retention vertical short-form videos.
 
-**Status**: Phase 1 (MVP) is fully implemented. The system successfully orchestrates a topic into a fully rendered, hardware-accelerated MP4 using deterministic AI agent chains, dynamic media composition, and self-hosted text-to-speech.
+**Status**: Phase 1 (MVP) is fully implemented. The system successfully orchestrates a topic into a fully rendered, hardware-accelerated MP4 using deterministic AI agent chains, dynamic media composition, and self-hosted text-to-speech. The core architecture is completely modular and media-length agnostic, making it ready to support long-form generation in future phases.
 
 ## High-Level Architecture
 
@@ -98,8 +98,8 @@ pnpm certify
 
 ## Future Roadmap (Phase 2+)
 
-With the core pipeline proven, the immediate focus shifts to **Make It Usable (Phase 2)**:
-- Interactive Timeline Studio UI for manual scene editing.
-- Approval gates before rendering.
-- Render caching and partial scene re-rendering.
-- Expanding video style presets to include kinetic typography. 
+With the core short-form engine proven, the immediate focus shifts to **Publishing & Automation (Phase 2)**:
+- Scheduled publishing to YouTube Shorts, TikTok, and Instagram Reels.
+- Analytics and performance tracking.
+- Automation for fully hands-off channel operations.
+- Interactive Timeline Studio UI for manual scene editing and approval gates. 

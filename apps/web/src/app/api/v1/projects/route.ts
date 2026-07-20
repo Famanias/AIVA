@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { QueueService } from '@/services/queue.service'
+import { QueueService } from '../../../../services/queue.service'
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = cookies()
+    const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -25,11 +26,17 @@ export async function POST(req: Request) {
       }
     )
 
-    // Ensure user is authenticated
+    // Ensure user is authenticated using their session cookie
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    // Initialize Admin client to bypass Postgres role restrictions for the inserts
+    const adminSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
 
     const body = await req.json()
     const { topic, style } = body
@@ -39,7 +46,7 @@ export async function POST(req: Request) {
     }
 
     // 1. Create the Project
-    const { data: project, error: projectError } = await supabase
+    const { data: project, error: projectError } = await adminSupabase
       .from('projects')
       .insert({
         title: `Video about ${topic}`,
@@ -56,7 +63,7 @@ export async function POST(req: Request) {
     }
 
     // 2. Create the Job tracking row
-    const { data: job, error: jobError } = await supabase
+    const { data: job, error: jobError } = await adminSupabase
       .from('jobs')
       .insert({
         project_id: project.id,

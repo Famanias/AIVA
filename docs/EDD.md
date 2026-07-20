@@ -6,13 +6,13 @@
 
 # 1. Executive Summary
 
-AIVA is an enterprise-grade, highly modular, multi-tenant software-as-a-service (SaaS) platform designed to automate the end-to-end production of high-quality, long-form (20–30 minute) **YouTube automation-style videos**. Rather than locking every channel into one visual identity, AIVA lets a creator pick a **video output style** per channel or per project — stickman animation, documentary-style B-roll narration, kinetic typography explainers, or avatar narration — and mix per-scene overrides on top of that default.
+AIVA is a configurable AI video generation platform. Phase 1 ships with a Short-Form GenerationProfile, not a short-form architecture. Rather than locking every channel into one visual identity, AIVA lets a creator pick a **video output style** per channel or per project — stickman animation, documentary-style B-roll narration, kinetic typography explainers, or avatar narration — and mix per-scene overrides on top of that default.
 
 The system is built around one insight the previous version under-emphasized: **the renderer is not "a stickman engine," it's a general programmatic template engine.** A stickman rig, a Ken-Burns photo pan with lower-third captions, and an animated typography callout are all just different Remotion component families rendered by the same worker, cached the same way, and composited by the same FFmpeg pipeline. Framing it this way is what makes adding new styles cheap instead of requiring a parallel system per style.
 
-By orchestrating distributed workflows across a collection of low-cost and open-source models, the system reduces the manual production timeline from hours down to roughly **20–35 minutes** (see §46), targeting an operational cost of **\$0.60–\$1.20 per video** at cold start, trending toward **\$0.25–\$0.40** at steady state once a channel's rig/template cache is warm (see §45).
+By orchestrating distributed workflows across a collection of low-cost and open-source models, the system reduces the manual production timeline from hours down to roughly **< 3 minutes**, targeting an operational cost of **<$0.15 per video** for short-form content.
 
-This document defines the systemic, architectural, database, pipeline, API, security, and operational configurations required to deploy AIVA as a robust, resilient, and horizontally scalable application — and, per §1.2, defines an explicit phased path to get there without building enterprise features before the core loop is proven.
+This document defines the systemic, architectural, database, pipeline, API, security, and operational configurations required to deploy AIVA as a robust, resilient, and horizontally scalable application. **Importantly: no architectural changes in this pivot should reduce the system's ability to support long-form generation in future phases. This pivot changes default generation strategies and product goals, not the underlying pipeline architecture.**
 
 ## 1.1 Design Principles
 
@@ -29,10 +29,10 @@ This document specifies the full target architecture, including features that sh
 
 | Phase | Scope | Explicitly Excluded |
 |---|---|---|
-| **P1 — Prove the Loop** | Single user, single workspace, two video styles only (**stickman animation** + **documentary**), topic → research → script/direction → voice → render → download. No dashboard beyond a status page. One VPS, no auto-scaling. | Multi-tenancy, RBAC, approval gates, channel scheduling, avatar style, kinetic typography style, rig marketplace, analytics, cost dashboard. |
-| **P2 — Make It Usable** | Timeline/Rig Studio UI, scene preview + approval gate, partial scene re-render, rig cloning/re-skinning, scene versioning, animation render caching, all 4 styles available. | Multi-channel scheduling, enterprise RBAC, localization, publishing automation. |
-| **P3 — Make It a SaaS** | Multi-tenant workspaces, channels, RBAC, cost dashboard + cost caps, scheduled YouTube/Drive publishing, basic analytics. | Rig marketplace, enterprise compliance/audit logs, localization pipeline. |
-| **P4 — Enterprise & Scale** | Multi-language localization, custom rig marketplace, branded/enterprise avatar styles, audit logs, Kubernetes-grade autoscaling, physics-based secondary motion, viseme-accurate lip sync. | — |
+| **P1 — Prove the Loop (Short-Form MVP)** | Single user, single workspace, short-form generation profiles (e.g. YouTube Shorts), two video styles only (**stickman animation** + **documentary**), ContentStrategy: Topic → Hook → Retention Outline → Script → Scenes. No dashboard beyond a status page. One VPS, no auto-scaling. | Multi-tenancy, RBAC, approval gates, channel scheduling, long-form generation. |
+| **P2 — Make It Usable (Automation & Publishing)** | Timeline/Rig Studio UI, scene preview + approval gate, partial scene re-render, rig cloning/re-skinning, scene versioning, animation render caching, scheduled publishing, analytics. | Long-form generation, enterprise RBAC, localization. |
+| **P3 — Make It a SaaS (Long-Form Generation)** | Multi-tenant workspaces, channels, RBAC, cost dashboard + cost caps, LongForm ContentStrategy support (Research → Outline → Chapters). | Multi-agent production studio, custom rig marketplace, localization pipeline. |
+| **P4 — Enterprise & Scale (Multi-Agent Studio)** | Multi-language localization, custom rig marketplace, branded/enterprise avatar styles, audit logs, Kubernetes-grade autoscaling, physics-based secondary motion, viseme-accurate lip sync. | — |
 
 The rest of this document is written at full target-architecture depth (that's the point of an EDD), but nothing here should be read as "build all of this simultaneously." Section tags like **[P1]**, **[P2]**, etc. mark where a feature belongs.
 
@@ -44,14 +44,19 @@ To democratize YouTube automation channel production by transforming raw, unstru
 
 ---
 
-# 3. Business Goals
+# 3. Business & Operational Goals
 
-- **Cost Minimization:** Maintain a production cost baseline in the **\$0.60–\$1.20** cold-start range (revised from an earlier, unrealistically low estimate — see §45) for a 30-minute 1080p60 video, trending down as template/rig caches warm.
-- **High Resilience:** Guarantee fault-tolerant resumes for multi-hour video rendering pipelines using stateful state machines (via Temporal or state-tracked BullMQ), with a target of zero full pipeline restarts due to a single-stage failure.
-- **User Retention:** Deliver an ultra-responsive UI displaying real-time rendering state changes via WebSocket connections, with sub-500ms perceived latency between backend state change and UI update.
-- **Visual Flexibility:** Let a creator pick a channel-level video output style, mix visual types per scene, and switch styles between projects without re-authoring the pipeline (§4).
-- **Rig/Template Reusability:** Reduce marginal rendering cost toward \$0 by making rigs and templates cacheable, versioned, shareable assets rather than per-video renders.
-- **Time-to-First-Video:** A new user should be able to go from signup to their first completed, watchable video in under 35 minutes end-to-end, including account setup (see §46 for the render-time floor this depends on).
+AIVA redefines success through actionable operational metrics:
+- **Pipeline Latency:** < 3 minutes end-to-end for Phase 1 short-form content.
+- **Generation Success Rate:** > 95%.
+- **Average API Cost:** < $0.15 per video.
+- **Average Render Latency:** < 60 seconds per video.
+- **Average Retry Count:** < 1.5 per stage.
+- **Cache Hit Ratio:** > 75% at steady state.
+- **Render Failure Rate:** < 2%.
+- **Provider Fallback Frequency:** < 5%.
+- **High Resilience:** Guarantee fault-tolerant resumes for multi-stage pipelines using stateful state machines (via Temporal or state-tracked BullMQ), with a target of zero full pipeline restarts due to a single-stage failure.
+- **Visual Flexibility:** Let a creator pick a channel-level video output style, mix visual types per scene, and switch styles between projects without re-authoring the pipeline.
 
 ---
 
@@ -71,9 +76,21 @@ This is the platform's answer to "not just stickman." A **Video Output Style** i
 
 ## 4.2 Why One Engine Can Serve All of Them
 
-Every style above is rendered by the same `AnimationService` worker (§19), the same `IAnimationRenderer` interface, and the same FFmpeg compositor. The only thing that changes between styles is **which Remotion component family a scene's template resolves to** and **which default pacing/camera rules apply**. This is the architectural reason a 5th or 6th style (e.g., a future "comic-panel" style) is a template addition, not a new subsystem — consistent with the provider-abstraction principle already used for LLMs/TTS/stock in v2.0, just applied one layer further into the renderer itself.
+Every style above is rendered by the same `AnimationService` worker (§19), the same `IAnimationRenderer` interface, and the same FFmpeg compositor. The only thing that changes between styles is **which Remotion component family a scene's template resolves to** and **which default pacing/camera rules apply**. This is the architectural reason a 5th or 6th style (e.g., a future "comic-panel" style) is a template addition, not a new subsystem. 
 
-## 4.3 Style Presets Are Data, Not Code
+## 4.3 Generation Profiles & Platform Profiles
+
+AIVA explicitly separates the *pipeline architecture* from *generation defaults* using **GenerationProfiles**. Every pipeline execution is parameterized by a GenerationProfile rather than baking assumptions into the code:
+- **Duration target:** e.g. 60 seconds
+- **Aspect ratio:** e.g. 9:16
+- **FPS:** e.g. 30
+- **Pacing strategy:** e.g. High-retention pacing (new visual every 2-6 seconds, hook within first 3 seconds)
+- **Narrative style:** e.g. Fast-paced hook-driven
+- **Platform:** e.g. YouTube Shorts (maps to a `PlatformProfile`)
+
+The architecture also leverages **PlatformProfiles** (e.g., YouTube Shorts, TikTok, Instagram Reels) to define platform-specific constraints like safe margins, subtitle styling, CTA placement, and export presets.
+
+## 4.4 Style Presets Are Data, Not Code
 
 ```sql
 CREATE TYPE video_style AS ENUM ('stickman_animation', 'documentary', 'kinetic_typography', 'avatar_narration', 'mixed_custom');
@@ -127,7 +144,7 @@ Reviews generated scripts and scene-level visual/style decisions — now includi
 # 6. User Stories
 
 - _As a Content Creator_, I want to pick "Documentary" for my history channel and "Stickman Animation" for my comedy channel, using the same platform account. **[P1]**
-- _As a Content Creator_, I want to submit a single topic so that I can receive a fully edited 25-minute video in my channel's chosen style, with voiceover and matching subtitles, without manual editing. **[P1]**
+- _As a Content Creator_, I want to submit a single topic so that I can receive a fully edited video in my channel's chosen style, parameterized by my selected GenerationProfile, without manual editing. **[P1]**
 - _As a Content Creator_, I want to see an actual visual preview of each scene (not just text) before the platform spends compute on full-quality rendering. **[P2]**
 - _As a Content Creator_, I want to clone and re-skin an existing stickman rig, or customize a kinetic-typography color/font theme, in under 5 minutes without any design experience. **[P2]**
 - _As a Content Creator_, I want to see a per-scene cost estimate before I approve rendering, so I don't accidentally burn budget on a script I'll discard. **[P2]**
@@ -331,7 +348,7 @@ aiva-monorepo/
 
 ```sql
 -- Core Enums
-CREATE TYPE video_status AS ENUM ('draft', 'queued', 'generating', 'awaiting_approval', 'rendered', 'failed', 'completed');
+CREATE TYPE video_status AS ENUM ('draft', 'queued', 'generating', 'awaiting_approval', 'rendered', 'failed', 'completed', 'cancelled');
 CREATE TYPE job_step AS ENUM (
   'research', 'outline', 'script_direction',   -- combined script + scene direction, see §16.1
   'brand_safety_check',
@@ -340,7 +357,7 @@ CREATE TYPE job_step AS ENUM (
   'scene_render',                              -- character_animation / broll / ai_image / kinetic_typography / avatar
   'composition', 'rendering',
   'thumbnail', 'metadata', 'cost_reconciliation',
-  'upload', 'notify'
+  'upload', 'notify', 'cancelled'
 );
 CREATE TYPE scene_visual_type AS ENUM ('character_animation', 'broll', 'ai_image', 'kinetic_typography', 'avatar');
 CREATE TYPE video_style AS ENUM ('stickman_animation', 'documentary', 'kinetic_typography', 'avatar_narration', 'mixed_custom');
@@ -468,6 +485,9 @@ CREATE TABLE jobs (
     attempt_count INT NOT NULL DEFAULT 0,
     error_log TEXT,
     state_payload JSONB,
+    cancel_requested_at TIMESTAMPTZ,
+    cancel_requested_by UUID REFERENCES auth.users(id),
+    cancel_reason TEXT,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc', now()) NOT NULL
 );
 
@@ -556,30 +576,23 @@ AIVA leverages **Supabase Auth** for tenant isolation. **[P1]** ships with a sin
 
 # 16. Video Generation Pipeline
 
-## 16.1 Agent Chain
+## 16.1 Content Strategy (Agent Chain)
 
-The script and direction stages are reframed as a named agent chain, per review feedback, rather than a loose sequence of LLM calls:
+To keep the pipeline media-length agnostic, AIVA abstracts prompt hierarchies into a **Content Strategy**. This defines how an idea becomes a script. The pipeline remains identical while only the strategy changes.
 
+**ShortFormStrategy (Phase 1):**
 ```
-Research Agent  → gathers sources per outline point (web search tool)
-      │
-      ▼
-Outline Agent   → turns research into a structured N-point outline, style-aware
-                   (documentary outlines skew toward chronological/causal structure;
-                    stickman outlines skew toward scene/beat structure)
-      │
-      ▼
-Script + Director Agent  → ONE combined LLM call that writes the narrative text AND
-                            tags each scene's visual_type, template action/camera/background,
-                            transition, and emotional_tone in the same JSON response
-      │
-      ▼
-Renderer  → scene_preview, then scene_render (§16.2)
+Topic  → Hook  → Retention Outline  → Script  → Scene Directions
 ```
 
-**Why one combined call instead of a separate "Director Agent" call:** an earlier design ran scene tagging as a distinct pass after script generation (and a further separate "Action Classifier" as a fallback). That's an extra round-trip for information the script-writing model already has fully in context — it knows the narrative beat, tone, and subject of each scene as it writes it. Merging the two removes a full LLM call per script, which is strictly cheaper and simpler with no quality loss. `IDirectorAgent` is still defined as its own interface (§30) so a specific style (e.g., a future style needing heavier shot-planning) can split it back out into a separate, richer call without changing anything else in the pipeline.
+**LongFormStrategy (Future Phases):**
+```
+Topic  → Research  → Outline  → Chapters  → Script  → Scene Directions
+```
 
-The **only** place a standalone direction call still exists is scene-level re-direction: when a human edits one scene's script text after the fact, only that scene needs its action/camera/transition re-tagged — re-running the full Script+Director Agent over the whole video would be wasteful. See §16.3.
+**Why one combined Script + Director call (in most strategies):** The agent writes the narrative text AND tags each scene's visual_type, template action/camera/background, transition, and emotional_tone in the same JSON response. Merging the two removes a full LLM call per script, which is strictly cheaper and simpler with no quality loss. 
+
+The **only** place a standalone direction call still exists is scene-level re-direction: when a human edits one scene's script text after the fact, only that scene needs its action/camera/transition re-tagged. See §16.3.
 
 ## 16.2 Pipeline Stages
 

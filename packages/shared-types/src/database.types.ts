@@ -7,36 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       animation_rigs: {
@@ -180,16 +150,30 @@ export type Database = {
           error_log?: string | null
           id?: string
           progress?: number
+          cancel_reason?: string | null
+          cancel_requested_at?: string | null
+          cancel_requested_by?: string | null
+          created_at?: string
+          current_step: Database["public"]["Enums"]["job_step"]
+          error_details?: Json | null
+          error_log?: string | null
+          id?: string
+          progress?: number | null
           project_id: string
           state_payload?: Json | null
           updated_at?: string
         }
         Update: {
           attempt_count?: number
+          cancel_reason?: string | null
+          cancel_requested_at?: string | null
+          cancel_requested_by?: string | null
+          created_at?: string
           current_step?: Database["public"]["Enums"]["job_step"]
+          error_details?: Json | null
           error_log?: string | null
           id?: string
-          progress?: number
+          progress?: number | null
           project_id?: string
           state_payload?: Json | null
           updated_at?: string
@@ -200,6 +184,47 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipeline_logs: {
+        Row: {
+          created_at: string
+          id: string
+          job_id: string
+          level: Database["public"]["Enums"]["log_level"]
+          message: string
+          metadata: Json | null
+          source: string
+          stage: Database["public"]["Enums"]["job_step"] | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          job_id: string
+          level: Database["public"]["Enums"]["log_level"]
+          message: string
+          metadata?: Json | null
+          source: string
+          stage?: Database["public"]["Enums"]["job_step"] | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          job_id?: string
+          level: Database["public"]["Enums"]["log_level"]
+          message?: string
+          metadata?: Json | null
+          source?: string
+          stage?: Database["public"]["Enums"]["job_step"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipeline_logs_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -313,7 +338,7 @@ export type Database = {
           typography_template?: string | null
           version_number?: number
           visual_prompt?: string | null
-          visual_type?: Database["public"]["Enums"]["scene_visual_type"]
+          visual_type: Database["public"]["Enums"]["scene_visual_type"]
         }
         Relationships: [
           {
@@ -422,7 +447,7 @@ export type Database = {
           default_transition?: string | null
           id?: string
           name?: string
-          style?: Database["public"]["Enums"]["video_style"]
+          style: Database["public"]["Enums"]["video_style"]
           visual_type_weights?: Json
           workspace_id?: string | null
         }
@@ -486,6 +511,7 @@ export type Database = {
         | "brand_safety_check"
         | "voiceover"
         | "subtitle_extraction"
+        | "assets"
         | "scene_preview"
         | "scene_render"
         | "composition"
@@ -495,6 +521,8 @@ export type Database = {
         | "cost_reconciliation"
         | "upload"
         | "notify"
+        | "cancelled"
+      log_level: "debug" | "info" | "warn" | "error"
       rig_style: "stickman" | "branded_character"
       scene_visual_type:
         | "character_animation"
@@ -510,6 +538,7 @@ export type Database = {
         | "rendered"
         | "failed"
         | "completed"
+        | "cancelled"
       video_style:
         | "stickman_animation"
         | "documentary"
@@ -641,9 +670,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       job_event_type: ["started", "finished", "failed", "retrying"],
@@ -654,6 +680,7 @@ export const Constants = {
         "brand_safety_check",
         "voiceover",
         "subtitle_extraction",
+        "assets",
         "scene_preview",
         "scene_render",
         "composition",
@@ -664,6 +691,7 @@ export const Constants = {
         "upload",
         "notify",
       ],
+      log_level: ["debug", "info", "warn", "error"],
       rig_style: ["stickman", "branded_character"],
       scene_visual_type: [
         "character_animation",
@@ -691,3 +719,4 @@ export const Constants = {
     },
   },
 } as const
+

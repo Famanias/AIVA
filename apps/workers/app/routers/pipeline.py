@@ -18,7 +18,7 @@ router = APIRouter()
 class BaseStageRequest(BaseModel):
     trace_id: str
     project_id: str
-    workspace_id: str
+    workspace_id: str = "default"
 
 class ResearchStageRequest(BaseStageRequest):
     topic: str
@@ -57,6 +57,7 @@ async def run_research(req: ResearchStageRequest) -> dict[str, Any]:
     bind_trace_id(req.trace_id)
     try:
         result = await stage_handlers.handle_research_stage(
+            job_id=req.trace_id,
             topic=req.topic,
             language=req.language,
         )
@@ -72,6 +73,7 @@ async def run_outline(req: OutlineStageRequest) -> dict[str, Any]:
     bind_trace_id(req.trace_id)
     try:
         result = await stage_handlers.handle_outline_stage(
+            job_id=req.trace_id,
             topic=req.topic,
             video_style=req.video_style,
             research_summary=req.research_summary,
@@ -90,6 +92,7 @@ async def run_script_direction(req: ScriptDirectionStageRequest) -> dict[str, An
     bind_trace_id(req.trace_id)
     try:
         result = await stage_handlers.handle_script_direction_stage(
+            job_id=req.trace_id,
             topic=req.topic,
             video_style=req.video_style,
             outline=req.outline,
@@ -112,6 +115,7 @@ async def run_voiceover(req: VoiceoverStageRequest) -> dict[str, Any]:
     bind_trace_id(req.trace_id)
     try:
         result = await stage_handlers.handle_voiceover_stage(
+            job_id=req.trace_id,
             scenes=req.scenes,
             voice_id=req.voice_id,
         )
@@ -126,6 +130,7 @@ async def run_subtitle_extraction(req: SubtitleStageRequest) -> dict[str, Any]:
     bind_trace_id(req.trace_id)
     try:
         result = await stage_handlers.handle_subtitle_extraction_stage(
+            job_id=req.trace_id,
             scene_voiceovers=req.scene_voiceovers,
         )
         return {"status": "success", "data": result}

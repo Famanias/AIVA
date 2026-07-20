@@ -1,3 +1,4 @@
+# pyrefly: ignore [missing-import]
 import structlog
 
 from app.providers.factory import get_llm_provider, get_search_provider, get_tts_provider
@@ -7,12 +8,14 @@ from app.agents.script_director_agent import ScriptDirectorAgent, ScriptDirector
 from app.agents.voiceover_agent import VoiceoverAgent, VoiceoverOutput
 from app.agents.subtitle_agent import SubtitleAgent, SubtitleOutput
 from app.models.whisper import WhisperModelWrapper
+from app.core.lifecycle import LifecycleService, CancellationError, PauseError
 
 logger = structlog.get_logger(__name__)
 
 
-async def handle_research_stage(topic: str, language: str = "en") -> dict:
+async def handle_research_stage(job_id: str, topic: str, language: str = "en") -> dict:
     """Executes the Research Agent."""
+    LifecycleService.throw_if_cancelled(job_id)
     llm = get_llm_provider()
     search = get_search_provider()
     agent = ResearchAgent(llm, search)
@@ -29,6 +32,7 @@ async def handle_research_stage(topic: str, language: str = "en") -> dict:
 
 
 async def handle_outline_stage(
+    job_id: str,
     topic: str,
     video_style: str,
     research_summary: str,
@@ -36,6 +40,7 @@ async def handle_outline_stage(
     language: str = "en",
 ) -> dict:
     """Executes the Outline Agent."""
+    LifecycleService.throw_if_cancelled(job_id)
     llm = get_llm_provider()
     agent = OutlineAgent(llm)
 
@@ -60,6 +65,7 @@ async def handle_outline_stage(
 
 
 async def handle_script_direction_stage(
+    job_id: str,
     topic: str,
     video_style: str,
     outline: list[dict],
@@ -72,6 +78,7 @@ async def handle_script_direction_stage(
     language: str = "en",
 ) -> dict:
     """Executes the combined Script + Director Agent."""
+    LifecycleService.throw_if_cancelled(job_id)
     llm = get_llm_provider()
     agent = ScriptDirectorAgent(llm)
 
@@ -113,10 +120,12 @@ async def handle_script_direction_stage(
 
 
 async def handle_voiceover_stage(
+    job_id: str,
     scenes: list[dict],
     voice_id: str = "en-US-AriaNeural",
 ) -> dict:
     """Executes the Voiceover Agent."""
+    LifecycleService.throw_if_cancelled(job_id)
     tts = get_tts_provider()
     agent = VoiceoverAgent(tts)
     
@@ -136,20 +145,21 @@ async def handle_voiceover_stage(
 
 
 async def handle_subtitle_extraction_stage(
+    job_id: str,
     scene_voiceovers: list[dict],
 ) -> dict:
-    """Executes the Subtitle Extraction Agent."""
-    whisper = WhisperModelWrapper()
-    agent = SubtitleAgent(whisper)
+    """Executes the Subtitle Extraction Agent. (Stubbed for MVP)"""
+    LifecycleService.throw_if_cancelled(job_id)
+    logger.info("subtitle_extraction_stub", num_scenes=len(scene_voiceovers))
     
-    outputs: list[SubtitleOutput] = await agent.run(scene_voiceovers)
-    
+    # MVP stub: return empty word timings for each scene.
+    # Full Whisper transcription will be enabled once the rendering pipeline is validated.
     return {
         "subtitles": [
             {
-                "sequence_number": o.scene_number,
-                "word_timings": o.word_timings,
+                "sequence_number": sv.get("sequence_number", i),
+                "word_timings": [],
             }
-            for o in outputs
+            for i, sv in enumerate(scene_voiceovers)
         ]
     }

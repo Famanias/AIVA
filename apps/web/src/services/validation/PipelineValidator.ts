@@ -3,8 +3,8 @@ import path from 'path'
 import { StageMetrics, ValidationReporter } from './ValidationReporter'
 import { InvariantChecker } from './InvariantChecker'
 import { RendererCompatChecker } from './RendererCompatChecker'
-import { stageRegistry } from '../StageRegistry'
-import { PipelineContext } from '../PipelineContext'
+import { stageRegistry } from '../pipeline/StageRegistry'
+import { PipelineContext } from '../pipeline/PipelineContext'
 
 export class PipelineValidator {
   
@@ -31,9 +31,19 @@ export class PipelineValidator {
         const handler = stageRegistry.getHandler(stage)
         
         // Mock PipelineContext for FastMode
-        const context = new PipelineContext(jobId, state, async (newState) => {
-          state = { ...state, ...newState }
-        })
+        const context = {
+          job: { id: jobId } as any,
+          project: state.project as any,
+          state,
+          logger: {
+            info: async () => {},
+            error: async () => {},
+            warn: async () => {},
+            debug: async () => {}
+          },
+          config: {},
+          db: {} as any
+        } as PipelineContext
 
         await handler.execute(context)
         

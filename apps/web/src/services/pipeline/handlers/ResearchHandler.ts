@@ -12,17 +12,18 @@ export class ResearchHandler extends BaseHandler {
     await context.logger.info(`Starting research for topic: ${context.project.topic}`)
 
     const payload = {
+      trace_id: context.job.id,
+      project_id: context.project.id,
       topic: context.project.topic,
-      style: context.project.video_style,
       language: context.project.language || 'en'
     }
 
-    const result = await workerGateway.execute<any>('/api/v1/research', payload, this.getTimeoutMs())
+    const result = await workerGateway.execute<any>('/pipeline/research', payload, this.getTimeoutMs())
 
     // Update the state context with the research results
-    context.state.research = result
+    context.state.research = result.data
 
-    await context.logger.info(`Research completed successfully. Found ${result.sources?.length || 0} sources.`)
+    await context.logger.info(`Research completed successfully. Found ${result.data.researchSources?.length || 0} sources.`)
 
     // Transition to the next stage
     return 'outline'

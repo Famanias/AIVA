@@ -12,11 +12,11 @@
 
 # Current Phase: P1 — Prove the Loop
 
-Target: Topic → research → script/direction → voiceover → render → downloadable MP4.
+Target: Topic → Hook → Retention Outline → Script → Scenes → Voiceover → Render → Downloadable MP4.
 
 Two styles only: stickman animation + documentary.
 
-Single user. Single VPS. No dashboard beyond status page + topic form.
+Single user. Single VPS. No dashboard beyond status page + topic form. Phase 1 targets short-form video generation (vertical 9:16) via the ShortForm GenerationProfile, keeping the infrastructure entirely modular.
 
 Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 
@@ -61,13 +61,16 @@ Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 - [x] Implement worker job consumer
 - [x] Implement retry with exponential backoff (base 2s, max 5 retries, jitter ±20%)
 - [x] Implement job state persistence (`jobs` table)
+- [x] Implement cooperative job cancellation and Queue Control UI (Node.js + Python)
 
 ## 5. Agent Chain (Python Workers)
 
 - [x] Implement Research Agent (web search → source gathering)
 - [x] Implement Outline Agent (sources → structured outline, style-aware)
 - [x] Implement Script + Director Agent (combined LLM call: narrative text + scene visual_type/action/camera/transition/tone)
-- [x] Set up prompt templates in `packages/prompt-library`
+- [ ] Refactor Prompt Library to use `ContentStrategy` abstraction (`ShortFormStrategy` vs `LongFormStrategy`).
+- [ ] Introduce `GenerationProfile` into the pipeline payload, removing hardcoded assumptions about duration and aspect ratio.
+- [ ] Update `ShortFormStrategy` prompt templates for High-Retention Pacing (Hook → Outline → Script → Scenes).
 - [x] Validate JSON schema output from combined agent
 
 ## 6. Voice & Subtitle Pipeline

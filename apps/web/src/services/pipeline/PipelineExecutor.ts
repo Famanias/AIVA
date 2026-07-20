@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
-import { Database } from '@aiva/shared-types/src/database.types'
+import { Database } from '@aiva/shared-types'
 import { PipelineContext, PipelineStateSchema } from './PipelineContext'
 import { stageRegistry } from './StageRegistry'
 import { QueueService } from '../queue.service'
+import { LifecycleService, CancellationError, PauseError } from './LifecycleService'
+
+import { PipelineLogger } from './PipelineLogger'
 
 /**
  * The core state machine orchestrator.
@@ -38,13 +41,18 @@ export class PipelineExecutor {
     }
 
     const currentStep = job.current_step
-    if (currentStep === 'completed' || currentStep === 'failed') {
-      console.log(`[PipelineExecutor] Job ${jobId} is already ${currentStep}. Skipping.`)
+    if (project.status === 'completed' || project.status === 'failed') {
+      console.log(`[PipelineExecutor] Job ${jobId} project is already ${project.status}. Skipping.`)
       return
     }
+    
+    // Check cancellation immediately
+    await LifecycleService.throwIfCancelledOrPaused(jobId)
 
     // 2. Parse existing state cleanly using Zod (Idempotency protection)
     const state = PipelineStateSchema.parse(job.state_payload || {})
+
+    const logger = new PipelineLogger(jobId, currentStep, 'orchestrator', this.db)
 
     // 3. Build the Context
     const context: PipelineContext = {
@@ -53,16 +61,7 @@ export class PipelineExecutor {
       state,
       db: this.db,
       config: {},
-      logger: {
-        info: async (msg) => {
-          console.log(`[Job ${jobId}] ${msg}`)
-          await this.logEvent(jobId, 'started', currentStep, msg)
-        },
-        error: async (msg, err) => {
-          console.error(`[Job ${jobId}] ERROR: ${msg}`, err)
-          await this.logEvent(jobId, 'failed', currentStep, `${msg} - ${err?.message || ''}`)
-        }
-      }
+      logger
     }
 
     // 4. Resolve the Handler
@@ -99,6 +98,9 @@ export class PipelineExecutor {
         throw new Error(`Failed to persist state: ${updateError.message}`)
       }
 
+      // Final cancellation check before advancing
+      await LifecycleService.throwIfCancelledOrPaused(jobId)
+
       await this.logEvent(jobId, 'finished', currentStep, `Stage completed successfully.`)
 
       // 7. Enqueue next stage if not completed
@@ -107,6 +109,32 @@ export class PipelineExecutor {
       }
 
     } catch (error: any) {
+      if (error instanceof CancellationError) {
+        await context.logger.info(`Cancellation requested by operator. Pipeline is safely stopping...`)
+        
+        // Cancellation lifecycle
+        await this.logCancellationEvent(jobId, 'worker_acknowledged', currentStep, 'Worker acknowledged cancellation request.')
+        await this.logCancellationEvent(jobId, 'cleanup_started', currentStep, 'Cleaning up resources...')
+        await this.logCancellationEvent(jobId, 'cleanup_finished', currentStep, 'Resources released.')
+        
+        // Final transition
+        await this.db.from('jobs').update({ current_step: 'cancelled' }).eq('id', jobId)
+        await this.db.from('projects').update({ status: 'cancelled' }).eq('id', project.id)
+        
+        await this.logCancellationEvent(jobId, 'cancelled', currentStep, 'Pipeline terminated successfully.')
+        return
+      }
+      
+      if (error instanceof PauseError) {
+        await context.logger.info(`Pause requested by operator. Pipeline is yielding...`)
+        
+        // Final transition
+        await this.db.from('projects').update({ status: 'paused' }).eq('id', project.id)
+        
+        await this.logEvent(jobId, 'finished', currentStep, 'Pipeline paused successfully.')
+        return
+      }
+
       await context.logger.error(`Execution failed at stage ${currentStep}`, error)
       throw error // Re-throw to trigger BullMQ backoff/retries
     }
@@ -116,6 +144,15 @@ export class PipelineExecutor {
     await this.db.from('job_events').insert({
       job_id: jobId,
       event_type: eventType,
+      job_step: step,
+      message
+    })
+  }
+
+  private async logCancellationEvent(jobId: string, eventType: string, step: any, message: string) {
+    await this.db.from('job_events').insert({
+      job_id: jobId,
+      event_type: eventType as any,
       job_step: step,
       message
     })

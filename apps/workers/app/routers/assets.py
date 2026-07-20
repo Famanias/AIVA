@@ -68,7 +68,7 @@ async def resolve_assets(state: Dict[str, Any]):
         new_state = state.copy()
         new_state["scenes"] = resolved_scenes
         
-        return new_state
+        return {"status": "success", "result": new_state}
         
     except Exception as e:
         print(f"[AssetRouter] Error resolving assets: {e}")

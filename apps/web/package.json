@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aiva/shared-types": "workspace:^",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.7",
     "bullmq": "^5.80.8",

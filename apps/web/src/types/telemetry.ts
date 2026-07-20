@@ -1,8 +1,9 @@
-import { Database } from '@aiva/shared-types/src/database.types'
+import { Database } from '@aiva/shared-types'
 
 export type JobRow = Database['public']['Tables']['jobs']['Row']
 export type JobEventRow = Database['public']['Tables']['job_events']['Row']
 export type ProjectRow = Database['public']['Tables']['projects']['Row']
+export type PipelineLogRow = Database['public']['Tables']['pipeline_logs']['Row']
 
 /**
  * Health status of infrastructure and external providers.
@@ -25,7 +26,7 @@ export interface SystemHealth {
 export interface PipelineStage {
   id: string
   label: string
-  status: 'completed' | 'running' | 'pending' | 'failed'
+  status: 'completed' | 'running' | 'pending' | 'failed' | 'paused' | 'cancelling' | 'cancelled'
   startedAt?: string
   completedAt?: string
   errorReason?: string
@@ -60,6 +61,7 @@ export interface PipelineTelemetry {
   project: ProjectRow | null
   job: JobRow | null
   events: JobEventRow[]
+  logs: PipelineLogRow[]
   health: SystemHealth
   stages: PipelineStage[]
   artifacts: ArtifactStatus

@@ -1,63 +1,94 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useDashboard } from '../../providers/DashboardProvider'
-import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Loader2, AlertCircle, CheckCircle2, Clock, Activity, DollarSign, PauseCircle, XCircle } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
 
 export function CurrentJobStatus() {
   const { telemetry } = useDashboard()
   const { job, events } = telemetry
+  const [elapsed, setElapsed] = useState<string>('0s')
+
+  useEffect(() => {
+    if (!job || !telemetry.project) return
+    const isCompleted = telemetry.project.status === 'completed' || telemetry.project.status === 'failed'
+    if (isCompleted) {
+      setElapsed(formatDistanceToNow(new Date(telemetry.project.created_at), { includeSeconds: true }))
+      return
+    }
+    
+    const interval = setInterval(() => {
+      setElapsed(formatDistanceToNow(new Date(telemetry.project!.created_at), { includeSeconds: true }))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [job, telemetry.project])
 
   if (!job) return null
 
-  // Find the most recent failure event if any for the current step
-  const lastErrorEvent = [...events]
-    .reverse()
-    .find(e => e.job_step === job.current_step && e.event_type === 'failed')
+  const lastErrorEvent = [...events].reverse().find(e => e.job_step === job.current_step && e.event_type === 'failed')
+  const isFailed = telemetry.project?.status === 'failed' || !!lastErrorEvent
+  const isCompleted = telemetry.project?.status === 'completed'
+  const isPaused = telemetry.project?.status === 'paused'
+  const isCancelling = telemetry.project?.status === 'cancelling'
+  const isCancelled = telemetry.project?.status === 'cancelled'
 
-  const isFailed = job.current_step === 'failed' || !!lastErrorEvent
-  const isCompleted = job.current_step === 'completed'
+  // Estimate cost based on progress (dummy logic for MVP)
+  const estimatedCost = `$${((job.progress / 100) * 0.15).toFixed(3)}`
+
+  let displayStatus = job.current_step.replace(/_/g, ' ')
+  if (isPaused) displayStatus = 'Paused'
+  else if (isCancelling) displayStatus = 'Cancelling...'
+  else if (isCancelled) displayStatus = 'Cancelled'
+  else if (isCompleted) displayStatus = 'Completed'
+  else if (isFailed) displayStatus = 'Failed'
+
+  const showSpinner = !isCompleted && !isFailed && !isPaused && !isCancelled
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-      <h3 className="text-sm font-semibold text-zinc-400 mb-4">Current Execution</h3>
-      
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <div className="text-3xl font-bold text-white capitalize flex items-center gap-3">
-            {job.current_step.replace(/_/g, ' ')}
-            {!isCompleted && !isFailed && <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />}
-            {isCompleted && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
-            {isFailed && <AlertCircle className="w-6 h-6 text-red-500" />}
-          </div>
-          <div className="text-sm text-zinc-500 mt-1">Overall Progress: {job.progress}%</div>
+    <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Current Stage */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 lg:col-span-2 relative overflow-hidden group">
+        <div className="absolute top-0 left-0 w-1 h-full bg-red-600"></div>
+        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+          <Activity className="w-4 h-4" /> Current Stage
+        </label>
+        <div className="text-xl font-medium text-zinc-100 capitalize flex items-center gap-2">
+          {displayStatus}
+          {showSpinner && <Loader2 className="w-4 h-4 text-zinc-400 animate-spin" />}
+          {isCompleted && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+          {isFailed && <AlertCircle className="w-5 h-5 text-red-500" />}
+          {isPaused && <PauseCircle className="w-5 h-5 text-yellow-500" />}
+          {isCancelled && <XCircle className="w-5 h-5 text-zinc-500" />}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 text-sm">
-        <div className="bg-zinc-800/50 rounded-lg p-3">
-          <label className="text-xs text-zinc-500 uppercase tracking-wider block mb-1">Queue Status</label>
-          <span className="text-zinc-200">Processing</span>
-        </div>
-        <div className="bg-zinc-800/50 rounded-lg p-3">
-          <label className="text-xs text-zinc-500 uppercase tracking-wider block mb-1">Retry Count</label>
-          <span className="text-zinc-200">0 / 5</span>
+      {/* Progress */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col justify-between">
+        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+          Overall Progress
+        </label>
+        <div className="text-2xl font-semibold text-zinc-100">{job.progress}%</div>
+        <div className="w-full bg-zinc-950 rounded-full h-1.5 mt-2 overflow-hidden border border-zinc-800">
+          <div className="bg-red-600 h-1.5 rounded-full transition-all duration-500 ease-out" style={{ width: `${job.progress}%` }}></div>
         </div>
       </div>
 
-      {isFailed && lastErrorEvent && (
-        <div className="mt-4 bg-red-950/30 border border-red-900/50 rounded-lg p-3">
-          <h4 className="text-sm font-medium text-red-400 flex items-center gap-2 mb-2">
-            <AlertCircle className="w-4 h-4" /> Failure Context
-          </h4>
-          <p className="text-sm text-red-200/80 font-mono">
-            {lastErrorEvent.message}
-          </p>
-          <div className="mt-2 text-xs text-red-400/60 uppercase tracking-wider">
-            Worker backoff active. Retrying...
-          </div>
-        </div>
-      )}
+      {/* Elapsed Time */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col justify-between">
+        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+          <Clock className="w-4 h-4" /> Elapsed
+        </label>
+        <div className="text-xl font-medium text-zinc-100">{elapsed}</div>
+      </div>
+
+      {/* Estimated Cost */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col justify-between">
+        <label className="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex items-center gap-2">
+          <DollarSign className="w-4 h-4" /> Est. Cost
+        </label>
+        <div className="text-xl font-medium text-zinc-100">{estimatedCost}</div>
+      </div>
     </div>
   )
 }

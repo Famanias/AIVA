@@ -15,36 +15,36 @@
 | Phase | Name | Objective | Timeline |
 |---|---|---|---|
 | P0 | Repository Initialization | Documentation, architecture, project setup | ✅ Complete |
-| P1 | Prove the Loop | Single user, two styles, topic → video → download | ✅ Complete |
-| P2 | Make It Usable | Timeline Studio, scene preview, partial re-render, all 4 styles | Months 3–4 |
-| P3 | Make It a SaaS | Multi-tenancy, channels, RBAC, cost dashboard, publishing | Months 5–7 |
-| P4 | Enterprise & Scale | Localization, avatar style, marketplace, audit logs, K8s | Months 8+ |
+| P1 | Prove the Loop (Short-Form Engine) | Short-form production engine (vertical, fast rendering) | ✅ Complete |
+| P2 | Publishing & Automation | Publishing, scheduling, analytics, automation | Months 3–4 |
+| P3 | Long-Form Generation | Multi-tenancy, long-form documentaries | Months 5–7 |
+| P4 | Multi-Agent Production Studio | Localization, custom agent flows, studio scale | Months 8+ |
 
 ---
 
-# P1 — Prove the Loop
+# P1 — Prove the Loop (Short-Form Production Engine)
 
-**Objective:** Validate that "topic in, watchable automation video out" works.
+**Objective:** Validate that the core pipeline works end-to-end, optimized for short-form, high-retention vertical videos (e.g., YouTube Shorts).
 
 **Scope:**
 
 - Single user, single workspace
 - Two video styles: stickman animation + documentary
-- Core pipeline: topic → research → script/direction → voiceover → render → download
-- No dashboard beyond a status page and topic-submission form
+- Content Strategy: Topic → Hook → Retention Outline → Script → Scenes
+- ShortForm GenerationProfile (e.g. 60 seconds, 9:16 aspect ratio)
 - Single VPS deployment via docker-compose
-- Basic cost logging (cost_ledger_entries populated)
+- Basic cost logging
 - Provider abstraction from day one
 
-**Explicitly excluded:** Multi-tenancy, RBAC, approval gates, channel scheduling, avatar style, kinetic typography, rig marketplace, analytics, cost dashboard.
+**Explicitly excluded:** Multi-tenancy, long-form generation, publishing automation.
 
-**Success criteria:** A user submits a topic and receives a downloadable, watchable MP4 in their chosen style.
+**Success criteria:** A user submits a topic and receives a downloadable, high-retention short-form video.
 
 ---
 
-# P2 — Make It Usable
+# P2 — Publishing & Automation
 
-**Objective:** Add the creative control and quality feedback loop that turns "it works" into "I'd actually use this."
+**Objective:** Add scheduling, automation, publishing, and creative control tools to make it a fully usable engine.
 
 **Scope:**
 
@@ -58,33 +58,31 @@
 - All four video styles available (add kinetic typography)
 - Cost estimation before render
 - Media asset manager
+- Advanced Queue Controls (Single, Bulk, Pipeline Cancellation) [✅ Early Delivered]
 
 **Success criteria:** A user can review, edit, and selectively re-render scenes before committing to a full video.
 
 ---
 
-# P3 — Make It a SaaS
+# P3 — Long-Form Generation
 
-**Objective:** Enable multi-user, multi-channel operation with billing, publishing, and admin tooling.
+**Objective:** Enable multi-tenant SaaS capabilities, multi-channel operation, and introduce long-form documentary generation.
 
 **Scope:**
 
 - Multi-tenant workspaces and channels
 - RBAC (Owner/Editor/Viewer)
 - Cost dashboard with per-workspace caps
-- Scheduled YouTube/Drive publishing
-- Thumbnail and metadata generation
-- Admin console (queue health, DLQ, tenant management)
-- Full approval workflow with notifications
+- LongForm ContentStrategy (Topic → Research → Outline → Chapters → Script)
 - Horizontal auto-scaling of workers
 
-**Success criteria:** Multiple users can independently operate channels with cost visibility and automated publishing.
+**Success criteria:** The platform supports both short-form and long-form workflows concurrently, managed across multiple tenants.
 
 ---
 
-# P4 — Enterprise & Scale
+# P4 — Multi-Agent Production Studio
 
-**Objective:** Enterprise features, advanced rendering, and marketplace.
+**Objective:** Enterprise features, multi-agent workflows, and advanced localization.
 
 **Scope:**
 

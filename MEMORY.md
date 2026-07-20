@@ -80,6 +80,16 @@ The pipeline certification testing supports a synchronous `FastMode` (direct seq
 
 Telemetry is treated strictly as an infrastructure concern, entirely decoupled from business logic and cost accounting. The `TelemetryClient` enforces a hard rule: all tracking operations are wrapped in `try/except` blocks. If the metrics database goes down, the pipeline simply logs a warning and continues processing. It also passes an OpenTelemetry-inspired `TelemetryContext` to capture prompt versions and job execution boundaries.
 
+## AD-014 — Cooperative Queue Cancellation
+
+Cancellation is modeled as a robust, explicit state transition (`cancel_requested_at` in the database) rather than a simple boolean flag or UI action. Both the Node.js orchestrator (`PipelineExecutor`) and the Python workers (via `CancellationService`) cooperatively check this state. This prevents orphaned compute resources (LLM/TTS operations) and ensures a single source of truth without duplicating state (e.g., avoiding conflicting `status=processing` and `is_cancelled=true`).
+
+Furthermore, cancellation is explicitly kept out of the `job_step` enum. `job_step` must only represent pipeline execution stages (e.g., research, outline, render). Job lifecycle events are modeled through explicit metadata (`cancelled_at`, `cancel_reason`) and the project `video_status`. This preserves semantic meaning and simplifies debugging (e.g. "cancelled during render").
+
+## AD-015 — Media-Length Agnostic Architecture
+
+The platform was pivoted to focus on Short-Form content (30-120s) for Phase 1 MVP, but the pipeline architecture remains strictly media-length agnostic. Hardcoded assumptions about video duration, aspect ratio, scene counts, or prompt chaining are banned from the core infrastructure. Instead, pipeline executions are parameterized by a `GenerationProfile` (defining duration, platform, aspect ratio, and pacing) and driven by a `ContentStrategy` (e.g., `ShortFormStrategy` vs `LongFormStrategy`). This preserves long-form readiness without regressing the architecture.
+
 ---
 
 # Assumptions
@@ -98,7 +108,7 @@ The pipeline runs straight through in P1. Approval gates (post-script, pre-rende
 
 ## AS-004 — Sequential Processing on Single Box
 
-In P1, Remotion/Chromium rendering, Whisper transcription, and SDXL image generation compete for the same CPU/GPU resources. Expect 20–35 minute total processing time per video. Parallel scene rendering across workers is a P3 capability.
+In P1, Remotion/Chromium rendering, Whisper transcription, and SDXL image generation compete for the same CPU/GPU resources. Because Phase 1 targets short-form video (30-120 seconds), expect < 3 minute total processing time per video. Parallel scene rendering across workers is a P3 capability for scaling and long-form workflows.
 
 ## AS-005 — Baseline Stack Versions
 
@@ -112,15 +122,20 @@ The baseline environments are established as Node.js 20 (for Remotion/Next.js) a
 - **2026-07-18**: Completed Milestone 8 (Asset Pipeline), Milestone 9 (Validation Framework), and Milestone 10 (Media Composition Engine). The entire pipeline from AI text generation down to final MP4 encoding is proven and operational.
 - **2026-07-18**: Completed Milestone 11 (Telemetry, Prompts & Cost Tracking), enabling non-blocking, system-wide observability and financial tracking.
 - **2026-07-18**: Completed Milestone 12 (CI & Pipeline-Level Testing) with fully deterministic mock providers, Golden Suite versioning, and migration validation. **Phase 1 is officially complete.**
+- **2026-07-20**: Stubbed the `faster-whisper` model download in the `SubtitleExtraction` stage to prevent massive model initialization delays and failures during MVP testing. Fixed API endpoint mismatches (Worker wrapper format) in the `assets` step and successfully pushed the full AI pipeline through to the `rendering` step.
+- **2026-07-20**: Implemented a comprehensive Queue Control System allowing single, selected, and bulk pipeline cancellations. Added `IQueueManager` abstraction, UI contextual bulk actions, and cross-language cooperative cancellation logic using a database-backed `cancel_requested_at` timestamp.
+- **2026-07-20**: Refined Queue Control System schema definitions. Separated the concept of execution stage (`job_step`) from job lifecycle events (cancellations). Added explicit `cancelled_at`, `cancel_reason`, and `cancel_requested_by` metadata fields to the `jobs` table to preserve a complete audit trail without mutating active pipeline stages.
+- **2026-07-20**: Pivoted MVP focus to short-form video generation while explicitly preserving the modular, media-length agnostic pipeline architecture. Introduced `GenerationProfile`, `PlatformProfile`, and `ContentStrategy` abstractions into the architectural documentation to ensure generation defaults are configurable rather than hardcoded.
 
 ---
 
 # Lessons Learned
 
-_No lessons yet. This section will grow as the project encounters real-world challenges._
+- **Database Enums in Pipeline Orchestration**: When adding new steps to the `PipelineExecutor` or `StageRegistry` (e.g. `assets`), the `job_step` enum in Postgres must be updated via a database migration. Otherwise, BullMQ jobs will fail silently or obscurely when trying to persist the new state to the `jobs` table.
+- **Python Worker API Contract**: Fast API endpoints communicating with the NodeJS `WorkerGateway` must explicitly wrap their responses in a `{"status": "success", "result": ...}` object (or use the `.data` field as expected by the caller). Returning plain dictionaries directly causes the `WorkerGateway` to fail parsing the success status, failing the BullMQ job.
 
 ---
 
 # Discoveries
 
-_No discoveries yet. This section will capture unexpected findings during implementation._
+- **Groq API Rate Limits**: `llama-3.3-70b-versatile` has strict 100k Tokens-Per-Day (TPD) limits, which get exhausted very quickly in a full pipeline test. Switching to `llama-3.1-8b-instant` provides a separate, faster quota (though still subject to 6,000 Tokens-Per-Minute limits for large requests). The pipeline MUST gracefully handle or backoff on HTTP 429/413 rate limit errors from Groq.

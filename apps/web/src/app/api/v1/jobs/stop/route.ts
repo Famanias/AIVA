@@ -1,0 +1,60 @@
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { QueueControlService } from '../../../../../services/queue.control.service'
+
+export async function POST(req: Request) {
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
+            } catch {
+              // Ignore inside route handlers
+            }
+          },
+        },
+      }
+    )
+
+    // Ensure user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await req.json()
+    const { action, jobId, projectId, jobIds, filter } = body
+
+    if (action === 'single') {
+      if (!jobId || !projectId) {
+        return NextResponse.json({ error: 'Missing jobId or projectId' }, { status: 400 })
+      }
+      await QueueControlService.stopJob(jobId, projectId, user.id)
+    } else if (action === 'selected') {
+      if (!jobIds || !Array.isArray(jobIds)) {
+        return NextResponse.json({ error: 'Missing or invalid jobIds array' }, { status: 400 })
+      }
+      await QueueControlService.stopSelected(jobIds, user.id)
+    } else if (action === 'all') {
+      if (!filter || !['queued', 'processing', 'all'].includes(filter)) {
+        return NextResponse.json({ error: 'Missing or invalid filter' }, { status: 400 })
+      }
+      await QueueControlService.stopAll(filter, user.id)
+    } else {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 })
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}

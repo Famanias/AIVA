@@ -50,7 +50,7 @@ export function JobMetadataPanel() {
               <Calendar className="w-3 h-3" /> Created
             </label>
             <span className="text-sm text-zinc-400">
-              {format(new Date(job.created_at), 'MMM d, HH:mm:ss')}
+              {format(new Date(project.created_at), 'MMM d, HH:mm:ss')}
             </span>
           </div>
           <div>

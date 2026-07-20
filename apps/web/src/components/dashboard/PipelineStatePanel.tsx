@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useDashboard } from '../../providers/DashboardProvider'
-import { LayoutList, CheckCircle2, Circle, Loader2, AlertCircle } from 'lucide-react'
+import { LayoutList, CheckCircle2, Circle, Loader2, AlertCircle, PauseCircle, XCircle } from 'lucide-react'
 
 export function PipelineStatePanel() {
   const { telemetry } = useDashboard()
@@ -21,7 +21,10 @@ export function PipelineStatePanel() {
               <span className={`text-sm ${
                 stage.status === 'completed' ? 'text-zinc-400' :
                 stage.status === 'running' ? 'text-zinc-200 font-medium' :
-                stage.status === 'failed' ? 'text-red-400' : 'text-zinc-600'
+                stage.status === 'failed' ? 'text-red-400' : 
+                stage.status === 'paused' ? 'text-yellow-400' :
+                (stage.status === 'cancelled' || stage.status === 'cancelling') ? 'text-zinc-500' :
+                'text-zinc-600'
               }`}>
                 {stage.label}
               </span>
@@ -32,7 +35,10 @@ export function PipelineStatePanel() {
                 </span>
                 {stage.status === 'completed' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
                 {stage.status === 'running' && <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />}
+                {stage.status === 'cancelling' && <Loader2 className="w-4 h-4 text-zinc-500 animate-spin" />}
                 {stage.status === 'failed' && <AlertCircle className="w-4 h-4 text-red-500" />}
+                {stage.status === 'paused' && <PauseCircle className="w-4 h-4 text-yellow-500" />}
+                {stage.status === 'cancelled' && <XCircle className="w-4 h-4 text-zinc-500" />}
                 {stage.status === 'pending' && <Circle className="w-4 h-4 text-zinc-700" />}
               </div>
             </div>

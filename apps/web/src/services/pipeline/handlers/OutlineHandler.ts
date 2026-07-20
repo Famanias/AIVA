@@ -15,14 +15,22 @@ export class OutlineHandler extends BaseHandler {
     }
 
     const payload = {
+      trace_id: context.job.id,
+      project_id: context.project.id,
       topic: context.project.topic,
-      style: context.project.video_style,
-      research_data: context.state.research
+      video_style: context.project.video_style || 'stickman',
+      research_summary: context.state.research?.researchSummary || JSON.stringify(context.state.research),
+      duration_target_minutes: context.project.duration_target_minutes || 3,
+      language: context.project.language || 'en'
     }
 
-    const result = await workerGateway.execute<any>('/api/v1/outline', payload, this.getTimeoutMs())
+    const result = await workerGateway.execute<any>('/pipeline/outline', payload, this.getTimeoutMs())
 
-    context.state.outline = result
+    if (result.status !== 'success') {
+      throw new Error(`Outline generation failed: ${result.error || 'Unknown error'}`)
+    }
+
+    context.state.outline = result.data.outline
 
     await context.logger.info(`Outline completed successfully.`)
 

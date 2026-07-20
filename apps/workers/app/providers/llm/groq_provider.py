@@ -19,7 +19,7 @@ _RETRY_POLICY = dict(
 )
 
 class GroqProvider(ILLMProvider):
-    def __init__(self, api_key: str, model: str = "llama-3.3-70b-versatile") -> None:
+    def __init__(self, api_key: str, model: str = "llama-3.1-8b-instant") -> None:
         try:
             from groq import AsyncGroq
             self._client = AsyncGroq(api_key=api_key)
@@ -76,6 +76,8 @@ class GroqProvider(ILLMProvider):
 
             return json.loads(raw)
         except json.JSONDecodeError as e:
+            logger.error("groq_generate_json_failed", error=str(e), type="JSONDecodeError", raw=raw)
             raise LLMProviderError("groq", f"Response was not valid JSON: {e}", e)
         except Exception as e:
+            logger.error("groq_generate_json_failed", error=str(e), type=type(e).__name__)
             raise LLMProviderError("groq", f"generate_json failed: {e}", e)

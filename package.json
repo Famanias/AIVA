@@ -11,7 +11,7 @@
     "type-check": "turbo type-check",
     "clean": "turbo clean && rimraf node_modules",
     "test:pipeline": "tsx scripts/certify_pipeline.ts --suite=golden",
-    "bootstrap": "pnpm install && bash packages/database/scripts/validate_migrations.sh",
+    "bootstrap": "pnpm install && node packages/database/scripts/validate_migrations.mjs",
     "certify": "CI_MOCK_PROVIDERS=true pnpm test:pipeline"
   },
   "devDependencies": {

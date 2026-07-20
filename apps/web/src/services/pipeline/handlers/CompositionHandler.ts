@@ -1,22 +1,28 @@
 import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
-import { WorkerGateway } from '../WorkerGateway'
+import { workerGateway } from '../WorkerGateway'
 
 export class CompositionHandler extends BaseHandler {
-  async execute(context: PipelineContext): Promise<void> {
-    const state = context.getState()
+  getTimeoutMs(): number {
+    return 5 * 60 * 1000 // 5 minutes
+  }
+
+  async execute(context: PipelineContext): Promise<string | null> {
+    const state = context.state
 
     // 1. Validate Prerequisite State
     if (!state.render?.outputUrl) {
       throw new Error('CompositionHandler requires the Remotion visual overlay (render.outputUrl).')
     }
 
-    context.log('Dispatching PipelineState to FFmpeg Composition Engine...')
+    await context.logger.info('Dispatching PipelineState to FFmpeg Composition Engine...')
 
     // 2. Map PipelineState to CompositionModel contract
     // We assume state.assets holds the background references from Milestone 8
     const compositionModel = {
-      job_id: state.job.id,
+      trace_id: context.job.id,
+      project_id: context.project.id,
+      job_id: context.job.id,
       overlay_track: {
         id: 'remotion_overlay',
         type: 'video',
@@ -54,16 +60,14 @@ export class CompositionHandler extends BaseHandler {
     }
     
     // 3. Dispatch
-    const response = await WorkerGateway.post('/composition/composite', compositionModel, {
-      timeoutMs: 15 * 60 * 1000 // Complex encoding can take time
-    })
+    const response = await workerGateway.execute<any>('/composition/composite', compositionModel, 15 * 60 * 1000)
 
     if (response.status !== 'success') {
       throw new Error(`Composition failed: ${response.error || 'Unknown error'}`)
     }
 
     // 4. Update State
-    context.updateState({
+    Object.assign(context.state, {
       ...state,
       composition: {
         outputUrl: response.data.output_reference.storage_key,
@@ -74,6 +78,8 @@ export class CompositionHandler extends BaseHandler {
       }
     })
 
-    context.log(`Final Composition generated successfully: ${response.data.output_reference.storage_key}`)
+    await context.logger.info(`Final Composition generated successfully: ${response.data.output_reference.storage_key}`)
+
+    return null // Last stage
   }
 }

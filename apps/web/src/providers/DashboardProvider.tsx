@@ -2,8 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import { createBrowserClient } from '@supabase/ssr'
-import { Database } from '@aiva/shared-types/src/database.types'
-import { PipelineTelemetry, JobRow, ProjectRow, JobEventRow, PipelineStage } from '../types/telemetry'
+import { Database } from '@aiva/shared-types'
+import { PipelineTelemetry, JobRow, ProjectRow, JobEventRow, PipelineLogRow, PipelineStage } from '../types/telemetry'
 
 interface DashboardContextType {
   telemetry: PipelineTelemetry
@@ -17,17 +17,20 @@ export function DashboardProvider({
   initialProject,
   initialJob,
   initialEvents,
+  initialLogs,
   children
 }: {
   projectId: string
   initialProject: ProjectRow | null
   initialJob: JobRow | null
   initialEvents: JobEventRow[]
+  initialLogs?: PipelineLogRow[]
   children: React.ReactNode
 }) {
   const [job, setJob] = useState<JobRow | null>(initialJob)
   const [events, setEvents] = useState<JobEventRow[]>(initialEvents)
-  const [project] = useState<ProjectRow | null>(initialProject)
+  const [logs, setLogs] = useState<PipelineLogRow[]>(initialLogs || [])
+  const [project, setProject] = useState<ProjectRow | null>(initialProject)
   
   const supabase = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -61,11 +64,37 @@ export function DashboardProvider({
       )
       .subscribe()
 
+    // Subscribe to pipeline_logs table insertions
+    const logsSubscription = supabase
+      .channel(`log-updates-${job.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'pipeline_logs', filter: `job_id=eq.${job.id}` },
+        (payload) => {
+          setLogs((prev) => [payload.new as PipelineLogRow, ...prev]) // Prepended to show newest first
+        }
+      )
+      .subscribe()
+
+    // Subscribe to projects table changes
+    const projectSubscription = supabase
+      .channel(`project-updates-${project?.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'projects', filter: `id=eq.${project?.id}` },
+        (payload) => {
+          setProject(payload.new as ProjectRow)
+        }
+      )
+      .subscribe()
+
     return () => {
       supabase.removeChannel(jobSubscription)
       supabase.removeChannel(eventsSubscription)
+      supabase.removeChannel(logsSubscription)
+      supabase.removeChannel(projectSubscription)
     }
-  }, [job?.id, supabase])
+  }, [job?.id, project?.id, supabase])
 
   // Derive Pipeline Stages from the current job step and history
   const stages = useMemo<PipelineStage[]>(() => {
@@ -81,14 +110,16 @@ export function DashboardProvider({
     return sequence.map((step, index) => {
       let status: PipelineStage['status'] = 'pending'
       
-      if (step === 'completed' && job?.current_step === 'completed') {
+      if (step === 'completed' && project?.status === 'completed') {
         status = 'completed'
-      } else if (index < currentIndex || job?.current_step === 'completed') {
+      } else if (index < currentIndex || project?.status === 'completed') {
         status = 'completed'
-      } else if (index === currentIndex && job?.current_step !== 'failed') {
-        status = 'running'
-      } else if (index === currentIndex && job?.current_step === 'failed') {
-        status = 'failed'
+      } else if (index === currentIndex) {
+        if (project?.status === 'failed') status = 'failed'
+        else if (project?.status === 'paused') status = 'paused'
+        else if (project?.status === 'cancelled') status = 'cancelled'
+        else if (project?.status === 'cancelling') status = 'cancelling'
+        else status = 'running'
       }
 
       return {
@@ -105,6 +136,7 @@ export function DashboardProvider({
       project,
       job,
       events,
+      logs,
       stages,
       // Default to checking; this will be hydrated by a real health check hook later
       health: {
@@ -125,7 +157,7 @@ export function DashboardProvider({
         retryCount: 0
       }
     }
-  }, [project, job, events, stages])
+  }, [project, job, events, logs, stages])
 
   return (
     <DashboardContext.Provider value={{ telemetry, isLoading: !job }}>
