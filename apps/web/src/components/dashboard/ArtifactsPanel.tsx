@@ -20,10 +20,10 @@ export function ArtifactsPanel() {
     
     const isExp = expanded[key]
 
-    if (key === 'research' && state.research?.summary) {
+    if (key === 'research' && state.research?.researchSummary) {
       return (
         <div className="mt-2 text-xs text-zinc-400 bg-zinc-950 p-2 rounded overflow-hidden">
-          <p className={`whitespace-pre-wrap ${!isExp && 'line-clamp-2'}`}>{state.research.summary}</p>
+          <p className={`whitespace-pre-wrap ${!isExp && 'line-clamp-2'}`}>{state.research.researchSummary}</p>
           <button onClick={(e) => { e.stopPropagation(); toggleExpand(key); }} className="text-red-500 hover:text-red-400 mt-1 flex items-center gap-1">
             {isExp ? <><ChevronUp className="w-3 h-3"/> Less</> : <><ChevronDown className="w-3 h-3"/> More</>}
           </button>
@@ -31,26 +31,26 @@ export function ArtifactsPanel() {
       )
     }
 
-    if (key === 'outline' && state.outline?.scenes) {
+    if (key === 'outline' && state.outline) {
       return (
         <div className="mt-2 text-xs text-zinc-400 bg-zinc-950 p-2 rounded">
-          <p>{state.outline.scenes.length} Scenes Outline Generated</p>
+          <p>{state.outline.length} Scenes Outline Generated</p>
         </div>
       )
     }
 
-    if (key === 'script' && state.script?.scenes) {
+    if (key === 'script' && state.scenes) {
       return (
         <div className="mt-2 text-xs text-zinc-400 bg-zinc-950 p-2 rounded">
-          <p>{state.script.scenes.length} Directed Scenes with Text</p>
+          <p>{state.scenes.length} Directed Scenes with Text</p>
           <button onClick={(e) => { e.stopPropagation(); toggleExpand(key); }} className="text-red-500 hover:text-red-400 mt-1 flex items-center gap-1">
              {isExp ? <><ChevronUp className="w-3 h-3"/> Hide Details</> : <><ChevronDown className="w-3 h-3"/> Preview Script</>}
           </button>
           {isExp && (
             <div className="mt-2 space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-              {state.script.scenes.map((s: any) => (
-                <div key={s.id} className="border-l-2 border-zinc-700 pl-2">
-                  <span className="font-semibold text-zinc-300">Scene {s.id}:</span> {s.text}
+              {state.scenes.map((s: any, idx: number) => (
+                <div key={idx} className="border-l-2 border-zinc-700 pl-2">
+                  <span className="font-semibold text-zinc-300">Scene {idx + 1}:</span> {s.text}
                 </div>
               ))}
             </div>
@@ -62,7 +62,7 @@ export function ArtifactsPanel() {
     if (key === 'voiceover' && state.voice?.audioUrl) {
       return (
         <div className="mt-2 w-full" onClick={(e) => e.stopPropagation()}>
-          <audio controls src={state.voice.audioUrl} className="w-full h-8 opacity-80 rounded"></audio>
+          <audio controls src={`/api/media?path=${encodeURIComponent(state.voice.audioUrl)}`} className="w-full h-8 opacity-80 rounded"></audio>
         </div>
       )
     }
@@ -73,16 +73,16 @@ export function ArtifactsPanel() {
       return (
         <div className="mt-2 flex gap-2 overflow-x-auto custom-scrollbar py-1" onClick={(e) => e.stopPropagation()}>
           {visualScenes.map((s: any) => (
-            <img key={s.id} src={s.assetUrl} alt="Asset" className="h-12 w-auto rounded border border-zinc-700 object-cover" />
+            <img key={s.id} src={`/api/media?path=${encodeURIComponent(s.assetUrl)}`} alt="Asset" className="h-12 w-auto rounded border border-zinc-700 object-cover" />
           ))}
         </div>
       )
     }
 
-    if (key === 'finalVideo' && state.render?.outputUrl) {
+    if (key === 'finalVideo' && state.composition?.outputUrl) {
       return (
         <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-          <video controls src={state.render.outputUrl} className="w-full rounded border border-zinc-700"></video>
+          <video controls src={`/api/media?path=${encodeURIComponent(state.composition.outputUrl)}`} className="w-full rounded border border-zinc-700"></video>
         </div>
       )
     }
@@ -105,6 +105,10 @@ export function ArtifactsPanel() {
         <Box className="w-4 h-4 text-red-600" /> Pipeline Artifacts
       </h3>
       
+      <div className="mb-4 text-xs text-zinc-500 font-mono">
+        Debug keys: {Object.keys(state).join(', ')}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {artifactsList.map((art) => {
           const Icon = art.icon

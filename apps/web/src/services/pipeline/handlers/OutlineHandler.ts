@@ -1,6 +1,7 @@
 import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
 import { workerGateway } from '../WorkerGateway'
+import { SHORT_FORM_PROFILE } from '@aiva/shared-types'
 
 export class OutlineHandler extends BaseHandler {
   getTimeoutMs(): number {
@@ -14,14 +15,16 @@ export class OutlineHandler extends BaseHandler {
       throw new Error("Missing research state. Outline cannot proceed.")
     }
 
+    const activeProfile = (context.state as any).generationProfile ?? SHORT_FORM_PROFILE
+
     const payload = {
       trace_id: context.job.id,
       project_id: context.project.id,
       topic: context.project.topic,
-      video_style: context.project.video_style || 'stickman',
+      video_style: context.project.video_style || 'stickman_animation',
       research_summary: context.state.research?.researchSummary || JSON.stringify(context.state.research),
-      duration_target_minutes: context.project.duration_target_minutes || 3,
-      language: context.project.language || 'en'
+      language: context.project.language || 'en',
+      generation_profile: activeProfile,
     }
 
     const result = await workerGateway.execute<any>('/pipeline/outline', payload, this.getTimeoutMs())

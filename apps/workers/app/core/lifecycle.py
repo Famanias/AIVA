@@ -1,7 +1,7 @@
 import time
 import structlog
 from supabase import create_client, Client
-from app.core.config import settings
+from app.core.config import get_settings
 
 logger = structlog.get_logger(__name__)
 
@@ -17,6 +17,7 @@ class LifecycleService:
 
     @classmethod
     def get_supabase(cls) -> Client:
+        settings = get_settings()
         return create_client(
             settings.supabase_url,
             settings.supabase_service_role_key

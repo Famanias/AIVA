@@ -58,3 +58,13 @@ This document tracks the major architectural decisions made during Phase 1 of th
 **Context**: LLM and TTS APIs change frequently and can go offline.
 **Decision**: Never import provider SDKs directly in business logic. Always use `ILLMProvider` and `ITTSProvider`.
 **Consequences**: We can swap Gemini for Groq, or use `MockLLMProvider` in CI without changing the orchestration code.
+
+## ADR 012: Local Media Proxy (Dashboard UI)
+**Context**: Modern browsers block web applications from securely loading raw local file paths (e.g., `C:\...`) to protect users, which prevents developers from viewing generated pipeline artifacts natively in the Next.js UI during local development.
+**Decision**: Implement a dedicated Next.js API route (`/api/media?path=`) to act as a secure proxy that streams local filesystem media directly to the browser.
+**Consequences**: Eliminates the need to upload intermediate artifacts to S3/Supabase Storage solely for developer preview. 
+
+## ADR 013: Local TTS Fallback (EdgeTTS)
+**Context**: High-fidelity TTS models like Kokoro-82M and Coqui are heavily dependent on PyTorch and CUDA. Running these locally alongside the LLM and Node processes frequently exhausts memory on developer machines, causing timeouts.
+**Decision**: Configure the TTS provider abstraction to use `EdgeTTSProvider` during local development as a fallback, fetching synthesized speech via Microsoft's cloud API.
+**Consequences**: Drastically reduces local machine load during development while maintaining accurate timing extraction for the FFmpeg pipeline, enabling faster end-to-end iteration.

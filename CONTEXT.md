@@ -90,3 +90,5 @@ None.
 | 2026-07-20 | Resolved end-to-end pipeline execution failures (Groq rate limits, missing job_step enum, handler mismatches, Whisper model download stubbed). The pipeline successfully processes from topic to rendering stage. |
 | 2026-07-20 | Implemented Queue Control System with cooperative cancellation spanning Node.js orchestrator and Python workers, backed by database state without duplicating sources of truth. |
 | 2026-07-20 | Pivoted product focus to Short-Form vertical videos. Updated root documentation (EDD, Roadmap, Tasks, Rules, Agents, Readme) to reflect `GenerationProfile` and `ContentStrategy` abstractions, explicitly decoupling the pipeline architecture from video duration constraints. |
+| 2026-07-21 | Debugged and resolved Windows local development pathing and composition errors caused by rogue Docker container conflicts and missing local FFmpeg binaries. |
+| 2026-07-21 | Finalized MVP end-to-end pipeline execution on Windows. Implemented Next.js local media proxy for dashboard artifact previews and switched to EdgeTTS to bypass heavy local ML inference during development. |

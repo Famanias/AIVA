@@ -1,4 +1,5 @@
 # pyrefly: ignore [missing-import]
+from typing import Any
 import structlog
 
 from app.providers.factory import get_llm_provider, get_search_provider, get_tts_provider
@@ -36,8 +37,10 @@ async def handle_outline_stage(
     topic: str,
     video_style: str,
     research_summary: str,
-    duration_target_minutes: int,
     language: str = "en",
+    generation_profile: dict[str, Any] | None = None,
+    # Legacy fallback only
+    duration_target_minutes: int = 1,
 ) -> dict:
     """Executes the Outline Agent."""
     LifecycleService.throw_if_cancelled(job_id)
@@ -48,8 +51,9 @@ async def handle_outline_stage(
         topic=topic,
         video_style=video_style,
         research_summary=research_summary,
-        duration_target_minutes=duration_target_minutes,
         language=language,
+        generation_profile=generation_profile,
+        duration_target_minutes=duration_target_minutes,
     )
 
     return {
@@ -74,8 +78,10 @@ async def handle_script_direction_stage(
     default_camera_pacing: str,
     rig_action_list: list[str],
     typography_template_list: list[str],
-    duration_target_minutes: int,
     language: str = "en",
+    generation_profile: dict[str, Any] | None = None,
+    # Legacy fallback only
+    duration_target_minutes: int = 1,
 ) -> dict:
     """Executes the combined Script + Director Agent."""
     LifecycleService.throw_if_cancelled(job_id)
@@ -96,8 +102,9 @@ async def handle_script_direction_stage(
         default_camera_pacing=default_camera_pacing,
         rig_action_list=rig_action_list,
         typography_template_list=typography_template_list,
-        duration_target_minutes=duration_target_minutes,
         language=language,
+        generation_profile=generation_profile,
+        duration_target_minutes=duration_target_minutes,
     )
 
     return {

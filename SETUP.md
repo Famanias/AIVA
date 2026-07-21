@@ -104,6 +104,7 @@ If you are modifying the ML pipeline, you may want to run the Python workers nat
    ```
 
 2. **Start Python Workers**:
+   *(Note for Windows users: If running natively outside Docker, you MUST have FFmpeg installed and in your PATH, e.g. `winget install -e --id Gyan.FFmpeg`)*
    ```bash
    cd apps/workers
    python -m venv venv

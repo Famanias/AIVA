@@ -90,6 +90,10 @@ Furthermore, cancellation is explicitly kept out of the `job_step` enum. `job_st
 
 The platform was pivoted to focus on Short-Form content (30-120s) for Phase 1 MVP, but the pipeline architecture remains strictly media-length agnostic. Hardcoded assumptions about video duration, aspect ratio, scene counts, or prompt chaining are banned from the core infrastructure. Instead, pipeline executions are parameterized by a `GenerationProfile` (defining duration, platform, aspect ratio, and pacing) and driven by a `ContentStrategy` (e.g., `ShortFormStrategy` vs `LongFormStrategy`). This preserves long-form readiness without regressing the architecture.
 
+## AD-016 — Local Media Proxy (Dashboard)
+
+Modern browsers block web applications from loading local file paths (e.g. `C:\...` or `file:///`) for security reasons. To allow developers and operators to preview generated artifacts (audio, video, images) directly from the Next.js Dashboard UI without uploading them to cloud storage, a dedicated Next.js API route (`/api/media?path=`) serves as a local proxy, streaming file streams directly to the browser's media tags.
+
 ---
 
 # Assumptions
@@ -126,6 +130,7 @@ The baseline environments are established as Node.js 20 (for Remotion/Next.js) a
 - **2026-07-20**: Implemented a comprehensive Queue Control System allowing single, selected, and bulk pipeline cancellations. Added `IQueueManager` abstraction, UI contextual bulk actions, and cross-language cooperative cancellation logic using a database-backed `cancel_requested_at` timestamp.
 - **2026-07-20**: Refined Queue Control System schema definitions. Separated the concept of execution stage (`job_step`) from job lifecycle events (cancellations). Added explicit `cancelled_at`, `cancel_reason`, and `cancel_requested_by` metadata fields to the `jobs` table to preserve a complete audit trail without mutating active pipeline stages.
 - **2026-07-20**: Pivoted MVP focus to short-form video generation while explicitly preserving the modular, media-length agnostic pipeline architecture. Introduced `GenerationProfile`, `PlatformProfile`, and `ContentStrategy` abstractions into the architectural documentation to ensure generation defaults are configurable rather than hardcoded.
+- **2026-07-21**: Debugged a critical pipeline failure at the FFmpeg composition stage. The composition engine executed inside a rogue background Docker container due to a port 8000 binding conflict, causing Windows file paths (e.g., `D:\repos\...`) to fail validation because the Linux container could not resolve them. Stopped the container, shifted the Python worker natively to Windows, implemented dynamic path resolution for the dummy TTS audio files, and installed FFmpeg via `winget` to successfully satisfy pipeline validation.
 
 ---
 
@@ -133,6 +138,9 @@ The baseline environments are established as Node.js 20 (for Remotion/Next.js) a
 
 - **Database Enums in Pipeline Orchestration**: When adding new steps to the `PipelineExecutor` or `StageRegistry` (e.g. `assets`), the `job_step` enum in Postgres must be updated via a database migration. Otherwise, BullMQ jobs will fail silently or obscurely when trying to persist the new state to the `jobs` table.
 - **Python Worker API Contract**: Fast API endpoints communicating with the NodeJS `WorkerGateway` must explicitly wrap their responses in a `{"status": "success", "result": ...}` object (or use the `.data` field as expected by the caller). Returning plain dictionaries directly causes the `WorkerGateway` to fail parsing the success status, failing the BullMQ job.
+- **Docker vs Local Environment Port Conflicts (Windows)**: When testing a local stack (Next.js, Uvicorn) on a machine that previously ran `docker-compose up -d`, Docker containers bound to `0.0.0.0:8000` will silently intercept HTTP traffic intended for a local `localhost:8000` process. This causes the orchestrator to communicate with a stale containerized environment, leading to inexplicable cross-OS path validation errors when passing absolute Windows paths to a Linux container.
+- **Windows System Dependencies in Python Subprocesses**: When transitioning from a Dockerized backend (where dependencies like FFmpeg are pre-installed in the Linux image) to a local Windows execution environment, explicit care must be taken to ensure system-level binaries (like `ffmpeg.exe`) are installed (e.g. via `winget`) and added to the user's system `PATH`. Python's `subprocess` will throw `[WinError 2]` if they are missing.
+- **FFmpeg Map Syntax with Empty Filter Complex**: If FFmpeg is called without a `-filter_complex` argument, output mappings (`-map`) must reference raw stream indices (e.g., `0:v`). Providing bracketed pad names (e.g., `[0:v]`) will cause FFmpeg to fail with `Invalid argument` (exit code `4294967274` on Windows), as bracketed pads are strictly reserved for named outputs from a filter graph.
 
 ---
 

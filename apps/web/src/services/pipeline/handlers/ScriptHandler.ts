@@ -1,6 +1,7 @@
 import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
 import { workerGateway } from '../WorkerGateway'
+import { SHORT_FORM_PROFILE } from '@aiva/shared-types'
 
 export class ScriptHandler extends BaseHandler {
   getTimeoutMs(): number {
@@ -16,20 +17,22 @@ export class ScriptHandler extends BaseHandler {
 
     await context.logger.info('Dispatching job to Python Script Direction Worker...')
     
+    const activeProfile = (context.state as any).generationProfile ?? SHORT_FORM_PROFILE
+
     const response = await workerGateway.execute<any>('/pipeline/script_direction', {
       trace_id: context.job.id,
       project_id: context.project.id,
       topic: context.project.topic,
-      video_style: context.project.video_style || 'stickman',
+      video_style: context.project.video_style || 'stickman_animation',
       outline: state.outline,
-      visual_type_weights: { "stickman": 1.0 }, // Hardcoded MVP defaults
-      allowed_templates: ["stickman_talking", "stickman_pointing"],
-      default_camera_pacing: "medium",
-      rig_action_list: ["talk", "point", "shrug"],
-      typography_template_list: ["default"],
-      duration_target_minutes: context.project.duration_target_minutes || 3,
-      language: context.project.language || 'en'
-    }, 5 * 60 * 1000)
+      visual_type_weights: { 'character_animation': 0.7, 'broll': 0.3 },
+      allowed_templates: ['character_animation', 'broll', 'ai_image'],
+      default_camera_pacing: 'fast',
+      rig_action_list: ['talk', 'point', 'shrug', 'walk', 'idle'],
+      typography_template_list: [],
+      language: context.project.language || 'en',
+      generation_profile: activeProfile,
+    }, this.getTimeoutMs())
 
     if (response.status !== 'success') {
       throw new Error(`Script generation failed: ${response.error || 'Unknown error'}`)

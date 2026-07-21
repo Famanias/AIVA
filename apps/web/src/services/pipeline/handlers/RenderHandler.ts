@@ -12,22 +12,25 @@ export class RenderHandler extends BaseHandler {
     const state = context.state
 
     // 1. Validate Prerequisite State
-    if (!state.voice?.wordTimings || state.scenes.length === 0) {
+    if (!state.voice?.subtitles || state.scenes.length === 0) {
       await context.logger.info('Rendering skipped: Waiting for user to edit timeline and generate subtitles in Studio UI.')
       return null // Gracefully exit to prevent BullMQ retry loops
     }
 
+    let style = context.project.video_style || 'stickman'
+    if (style === 'stickman_animation') style = 'stickman'
+
     // 2. Package into Version 1 PipelineIR
     const ir: PipelineIR = {
       version: 1,
-      templateFamily: context.project.video_style || 'stickman',
+      templateFamily: style,
       metadata: {
         projectId: context.project.id,
         jobId: context.job.id,
         topic: context.project.topic
       },
       voice: {
-        wordTimings: state.voice.wordTimings,
+        wordTimings: state.voice.subtitles,
         audioUrl: state.voice.audioUrl
       },
       scenes: state.scenes.map((s: any) => ({

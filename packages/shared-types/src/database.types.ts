@@ -146,10 +146,6 @@ export type Database = {
         }
         Insert: {
           attempt_count?: number
-          current_step: Database["public"]["Enums"]["job_step"]
-          error_log?: string | null
-          id?: string
-          progress?: number
           cancel_reason?: string | null
           cancel_requested_at?: string | null
           cancel_requested_by?: string | null
@@ -539,6 +535,7 @@ export type Database = {
         | "failed"
         | "completed"
         | "cancelled"
+        | "paused"
       video_style:
         | "stickman_animation"
         | "documentary"
@@ -708,6 +705,8 @@ export const Constants = {
         "rendered",
         "failed",
         "completed",
+        "cancelled",
+        "paused",
       ],
       video_style: [
         "stickman_animation",

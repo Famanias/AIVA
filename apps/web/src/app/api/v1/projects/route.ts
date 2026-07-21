@@ -79,7 +79,7 @@ export async function POST(req: Request) {
     }
 
     // 3. Enqueue the Pipeline Job in BullMQ
-    await QueueService.enqueuePipelineJob(job.id, 0)
+    await QueueService.enqueuePipelineJob(job.id, 'research', 0)
 
     return NextResponse.json({ project, job }, { status: 201 })
   } catch (err: any) {

@@ -3,13 +3,18 @@ import { pipelineQueue } from '../../lib/queue/client'
 import { IQueueManager, JobState } from './IQueueManager'
 
 export class BullMQQueueManager implements IQueueManager {
-  async enqueueJob(jobId: string, priority: number = 0): Promise<void> {
-    console.log(`[BullMQQueueManager] Enqueueing pipeline job: ${jobId} (priority: ${priority})`)
+  async enqueueJob(jobId: string, step: string, priority: number = 0): Promise<void> {
+    const bullMqJobId = `${jobId}_${step}`
+    console.log(`[BullMQQueueManager] Enqueueing pipeline job: ${bullMqJobId} (priority: ${priority})`)
     // Pass the Supabase jobId as both the BullMQ jobId (for tracking) and in the data payload.
     await pipelineQueue.add(
       'process-pipeline', 
       { jobId }, 
-      { priority, jobId }
+      { 
+        priority, 
+        jobId: bullMqJobId,
+        removeOnComplete: true
+      }
     )
   }
 

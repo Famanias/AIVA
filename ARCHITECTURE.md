@@ -28,7 +28,7 @@ graph TD
 ## Core Components
 
 ### 1. Next.js Orchestrator & UI (`apps/web`)
-Acts as the central nervous system. It manages user authentication (via Supabase Auth), accepts topic submissions, writes the initial job state to the database, and dispatches the job to BullMQ.
+Acts as the central nervous system. It manages user authentication (via Supabase Auth), accepts topic submissions, writes the initial job state to the database, and dispatches the job to BullMQ. It also includes a dedicated local media proxy (`/api/media`) to stream generated pipeline artifacts (audio/video) directly from the filesystem to the browser, bypassing strict local-resource browser security policies.
 
 ### 2. Job Queue (`BullMQ` + `Redis`)
 All inter-service coordination happens through a Redis-backed BullMQ queue. The pipeline execution is stateful and resumable. If a Python worker crashes during a 30-minute render, the queue guarantees a retry with exponential backoff.

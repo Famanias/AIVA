@@ -3,11 +3,13 @@ Script + Director Agent
 
 Writes the full narrative script AND tags every scene's visual direction
 in a single combined LLM call.
+Generation parameters (duration, pacing, platform) come from the GenerationProfile.
 Called during the 'script_direction' job_step.
 See EDD §16.1.
 """
 import json
 from dataclasses import dataclass
+from typing import Any
 
 import structlog
 
@@ -88,13 +90,12 @@ class ScriptDirectorAgent:
         default_camera_pacing: str,
         rig_action_list: list[str],
         typography_template_list: list[str],
-        duration_target_minutes: int = 20,
         language: str = "en",
+        generation_profile: dict[str, Any] | None = None,
+        # Legacy fallback only — prefer generation_profile
+        duration_target_minutes: int = 1,
     ) -> ScriptDirectorOutput:
         logger.info("script_director_agent_start", topic=topic, video_style=video_style)
-
-        # Average speaking rate is ~150 words per minute
-        approx_word_count = duration_target_minutes * 150
 
         from app.prompts import build_script_director_prompt
 
@@ -105,11 +106,11 @@ class ScriptDirectorAgent:
             visual_type_weights=visual_type_weights,
             allowed_templates=allowed_templates,
             default_camera_pacing=default_camera_pacing,
-            duration_target_minutes=duration_target_minutes,
-            approx_word_count=approx_word_count,
             rig_action_list=rig_action_list,
             typography_template_list=typography_template_list,
             outline=outline,
+            generation_profile=generation_profile,
+            duration_target_minutes=duration_target_minutes,
         )
 
         try:

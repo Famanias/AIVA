@@ -18,7 +18,6 @@ router = APIRouter()
 class BaseStageRequest(BaseModel):
     trace_id: str
     project_id: str
-    workspace_id: str = "default"
 
 class ResearchStageRequest(BaseStageRequest):
     topic: str
@@ -28,8 +27,10 @@ class OutlineStageRequest(BaseStageRequest):
     topic: str
     video_style: str
     research_summary: str
-    duration_target_minutes: int
     language: str = "en"
+    generation_profile: dict[str, Any] | None = None
+    # Legacy fallback only — prefer generation_profile
+    duration_target_minutes: int = 1
 
 class ScriptDirectionStageRequest(BaseStageRequest):
     topic: str
@@ -40,8 +41,10 @@ class ScriptDirectionStageRequest(BaseStageRequest):
     default_camera_pacing: str
     rig_action_list: list[str]
     typography_template_list: list[str]
-    duration_target_minutes: int
     language: str = "en"
+    generation_profile: dict[str, Any] | None = None
+    # Legacy fallback only — prefer generation_profile
+    duration_target_minutes: int = 1
 
 class VoiceoverStageRequest(BaseStageRequest):
     scenes: list[dict]
@@ -77,8 +80,9 @@ async def run_outline(req: OutlineStageRequest) -> dict[str, Any]:
             topic=req.topic,
             video_style=req.video_style,
             research_summary=req.research_summary,
-            duration_target_minutes=req.duration_target_minutes,
             language=req.language,
+            generation_profile=req.generation_profile,
+            duration_target_minutes=req.duration_target_minutes,
         )
         return {"status": "success", "data": result}
     except Exception as e:
@@ -101,8 +105,9 @@ async def run_script_direction(req: ScriptDirectionStageRequest) -> dict[str, An
             default_camera_pacing=req.default_camera_pacing,
             rig_action_list=req.rig_action_list,
             typography_template_list=req.typography_template_list,
-            duration_target_minutes=req.duration_target_minutes,
             language=req.language,
+            generation_profile=req.generation_profile,
+            duration_target_minutes=req.duration_target_minutes,
         )
         return {"status": "success", "data": result}
     except Exception as e:

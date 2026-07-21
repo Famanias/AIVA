@@ -12,6 +12,7 @@ import { generateTimeline } from './core/TimelineGenerator'
 import { AssetResolver } from './core/AssetResolver'
 import { templateRegistry } from './core/TemplateRegistry'
 import { RemotionBackend } from './backends/RemotionBackend'
+import './templates' // Register templates
 
 const app = express()
 app.use(express.json({ limit: '100mb' }))

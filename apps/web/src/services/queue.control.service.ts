@@ -24,7 +24,16 @@ export class QueueControlService {
     if (!project) return false;
     if (['completed', 'failed', 'cancelled'].includes(project.status)) return true;
 
-    const jobState = await queueManager.getJobState(jobId)
+    const { data: job } = await this.adminSupabase
+      .from('jobs')
+      .select('current_step')
+      .eq('id', jobId)
+      .single()
+      
+    if (!job) return false;
+
+    const bullMqJobId = `${jobId}_${job.current_step}`
+    const jobState = await queueManager.getJobState(bullMqJobId)
     const isPaused = project.status === 'paused'
     const isCancelling = project.status === 'cancelling'
     const isQueuedInBull = jobState && (jobState.status === 'waiting' || jobState.status === 'delayed')
@@ -33,7 +42,7 @@ export class QueueControlService {
     if (isPaused || isQueuedInBull || isCancelling) {
       // 1. Remove from Queue
       if (isQueuedInBull) {
-        await queueManager.removeJob(jobId)
+        await queueManager.removeJob(bullMqJobId)
       }
 
       // 2. Mark project as cancelled immediately
@@ -85,10 +94,19 @@ export class QueueControlService {
   }
 
   static async pauseJob(jobId: string, projectId: string, userId: string): Promise<boolean> {
-    const jobState = await queueManager.getJobState(jobId)
+    const { data: job } = await this.adminSupabase
+      .from('jobs')
+      .select('current_step')
+      .eq('id', jobId)
+      .single()
+      
+    if (!job) return false;
+
+    const bullMqJobId = `${jobId}_${job.current_step}`
+    const jobState = await queueManager.getJobState(bullMqJobId)
 
     if (jobState && (jobState.status === 'waiting' || jobState.status === 'delayed')) {
-      await queueManager.removeJob(jobId)
+      await queueManager.removeJob(bullMqJobId)
 
       await this.adminSupabase
         .from('projects')
@@ -145,7 +163,15 @@ export class QueueControlService {
     const logger = new PipelineLogger(jobId, 'queued', 'orchestrator', this.adminSupabase)
     await logger.info('Resume requested by operator. Job re-enqueued to continue from last checkpoint.')
 
-    await queueManager.enqueueJob(jobId)
+    const { data: job } = await this.adminSupabase
+      .from('jobs')
+      .select('current_step')
+      .eq('id', jobId)
+      .single()
+      
+    if (job) {
+      await queueManager.enqueueJob(jobId, job.current_step)
+    }
     return true
   }
 

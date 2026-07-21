@@ -45,7 +45,7 @@ export class PipelineExecutor {
       console.log(`[PipelineExecutor] Job ${jobId} project is already ${project.status}. Skipping.`)
       return
     }
-    
+
     // Check cancellation immediately
     await LifecycleService.throwIfCancelledOrPaused(jobId)
 
@@ -75,7 +75,7 @@ export class PipelineExecutor {
 
       // 6. Persist State and Transition
       const safeState = PipelineStateSchema.parse(context.state)
-      
+
       const updatePayload: any = {
         state_payload: safeState as any,
         updated_at: new Date().toISOString()
@@ -85,7 +85,6 @@ export class PipelineExecutor {
         updatePayload.current_step = nextStep
         updatePayload.progress = this.calculateProgress(nextStep)
       } else {
-        updatePayload.current_step = 'completed'
         updatePayload.progress = 100
       }
 
@@ -105,32 +104,34 @@ export class PipelineExecutor {
 
       // 7. Enqueue next stage if not completed
       if (nextStep) {
-        await QueueService.enqueuePipelineJob(jobId)
+        await QueueService.enqueuePipelineJob(jobId, nextStep)
+      } else {
+        await this.db.from('projects').update({ status: 'completed' }).eq('id', project.id)
       }
 
     } catch (error: any) {
       if (error instanceof CancellationError) {
         await context.logger.info(`Cancellation requested by operator. Pipeline is safely stopping...`)
-        
+
         // Cancellation lifecycle
         await this.logCancellationEvent(jobId, 'worker_acknowledged', currentStep, 'Worker acknowledged cancellation request.')
         await this.logCancellationEvent(jobId, 'cleanup_started', currentStep, 'Cleaning up resources...')
         await this.logCancellationEvent(jobId, 'cleanup_finished', currentStep, 'Resources released.')
-        
+
         // Final transition
         await this.db.from('jobs').update({ current_step: 'cancelled' }).eq('id', jobId)
         await this.db.from('projects').update({ status: 'cancelled' }).eq('id', project.id)
-        
+
         await this.logCancellationEvent(jobId, 'cancelled', currentStep, 'Pipeline terminated successfully.')
         return
       }
-      
+
       if (error instanceof PauseError) {
         await context.logger.info(`Pause requested by operator. Pipeline is yielding...`)
-        
+
         // Final transition
         await this.db.from('projects').update({ status: 'paused' }).eq('id', project.id)
-        
+
         await this.logEvent(jobId, 'finished', currentStep, 'Pipeline paused successfully.')
         return
       }
@@ -160,9 +161,9 @@ export class PipelineExecutor {
 
   private calculateProgress(step: string): number {
     const sequence = [
-      'research', 'outline', 'script_direction', 'brand_safety_check', 
-      'voiceover', 'subtitle_extraction', 'scene_preview', 'scene_render', 
-      'composition', 'rendering', 'thumbnail', 'metadata', 
+      'research', 'outline', 'script_direction', 'brand_safety_check',
+      'voiceover', 'subtitle_extraction', 'scene_preview', 'scene_render',
+      'composition', 'rendering', 'thumbnail', 'metadata',
       'cost_reconciliation', 'upload', 'notify', 'completed'
     ]
     const index = sequence.indexOf(step)

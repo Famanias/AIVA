@@ -46,6 +46,95 @@ export type VideoStyle =
 export type RigStyle = 'stickman' | 'branded_character';
 
 // =============================================================================
+// Generation Profiles (EDD §4.3)
+// Parameterize every pipeline execution without hardcoding assumptions.
+// =============================================================================
+
+export type ContentStrategy = 'short_form' | 'long_form';
+
+/**
+ * Describes the pacing constraints for a GenerationProfile.
+ * Used by the prompt library to guide the LLM without hardcoded scene counts.
+ */
+export interface PacingStrategy {
+  /** Suggested seconds between new visual cuts */
+  visualCutIntervalSeconds: [number, number];
+  /** Hook must land within this many seconds */
+  hookWithinSeconds: number;
+  /** Approximate words per minute for narration */
+  wordsPerMinute: number;
+}
+
+/**
+ * Platform-specific rendering and export constraints.
+ * The renderer consumes this to derive resolution, safe margins, etc.
+ */
+export interface PlatformProfile {
+  platform: 'youtube_shorts' | 'tiktok' | 'instagram_reels' | 'youtube' | 'generic';
+  aspectRatio: '9:16' | '16:9' | '1:1' | '4:5';
+  /** Width in pixels */
+  width: number;
+  /** Height in pixels */
+  height: number;
+  fps: number;
+  /** Subtitle style recommended for this platform */
+  subtitleStyle: 'bottom_center_large' | 'center_karaoke' | 'standard';
+  /** CTA placement recommendation */
+  ctaPlacement: 'end_screen' | 'overlay_mid' | 'none';
+}
+
+/**
+ * First-class domain model. Parameterizes every pipeline execution.
+ * Workers consume this instead of hardcoded duration/aspect ratio assumptions.
+ * Phase 1 ships with SHORT_FORM_PROFILE as the default.
+ */
+export interface GenerationProfile {
+  /** Which content strategy chain to use */
+  contentStrategy: ContentStrategy;
+  /** Target duration in seconds */
+  targetDurationSeconds: number;
+  /** Allowed range in seconds */
+  minDurationSeconds: number;
+  maxDurationSeconds: number;
+  pacing: PacingStrategy;
+  platform: PlatformProfile;
+  /** Narrative style hint passed to the LLM */
+  narrativeStyle: string;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 1 Default: Short-Form Profile
+// ---------------------------------------------------------------------------
+
+export const YOUTUBE_SHORTS_PLATFORM: PlatformProfile = {
+  platform: 'youtube_shorts',
+  aspectRatio: '9:16',
+  width: 1080,
+  height: 1920,
+  fps: 30,
+  subtitleStyle: 'center_karaoke',
+  ctaPlacement: 'end_screen',
+}
+
+export const SHORT_FORM_PACING: PacingStrategy = {
+  visualCutIntervalSeconds: [2, 6],
+  hookWithinSeconds: 3,
+  wordsPerMinute: 150,
+}
+
+export const SHORT_FORM_PROFILE: GenerationProfile = {
+  contentStrategy: 'short_form',
+  targetDurationSeconds: 60,
+  minDurationSeconds: 30,
+  maxDurationSeconds: 120,
+  pacing: SHORT_FORM_PACING,
+  platform: YOUTUBE_SHORTS_PLATFORM,
+  narrativeStyle: 'Fast-paced, hook-driven, high-retention. Lead with the most surprising fact. Every sentence must earn attention.',
+}
+
+
+
+// =============================================================================
 // Voice & Subtitle
 // =============================================================================
 
@@ -251,8 +340,11 @@ export interface CostLedgerEntry {
 export interface CreateProjectPayload {
   topic: string;
   videoStyle: VideoStyle;
+  /** @deprecated Use generationProfile.targetDurationSeconds instead. Kept for backward compat. */
   durationTargetMinutes?: number;
   language?: string;
+  /** Optional — defaults to SHORT_FORM_PROFILE if not supplied. */
+  generationProfile?: GenerationProfile;
 }
 
 export interface ProjectStatusResponse {
@@ -270,6 +362,11 @@ export interface PipelineStatePayload {
   workspaceId: string;
   stylePresetId: string;
   rigId?: string;
+  /**
+   * The GenerationProfile active for this pipeline run.
+   * Defaults to SHORT_FORM_PROFILE if not explicitly set.
+   */
+  generationProfile?: GenerationProfile;
   /** Populated after research stage */
   researchSources?: ResearchSource[];
   /** Populated after outline stage */

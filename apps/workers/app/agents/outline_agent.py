@@ -3,9 +3,12 @@ Outline Agent
 
 Transforms research into a structured video outline appropriate for the video style.
 Called during the 'outline' job_step.
+Generation parameters (duration, pacing, platform) come from the GenerationProfile,
+not from hardcoded defaults.
 See EDD §16.1.
 """
 from dataclasses import dataclass
+from typing import Any
 
 import structlog
 
@@ -68,8 +71,10 @@ class OutlineAgent:
         topic: str,
         video_style: str,
         research_summary: str,
-        duration_target_minutes: int = 20,
         language: str = "en",
+        generation_profile: dict[str, Any] | None = None,
+        # Legacy fallback only — prefer generation_profile
+        duration_target_minutes: int = 1,
     ) -> OutlineOutput:
         logger.info("outline_agent_start", topic=topic, video_style=video_style)
 
@@ -78,9 +83,10 @@ class OutlineAgent:
         prompt = build_outline_prompt(
             topic=topic,
             video_style=video_style,
-            duration_target_minutes=duration_target_minutes,
             language=language,
             research_summary=research_summary,
+            generation_profile=generation_profile,
+            duration_target_minutes=duration_target_minutes,
         )
 
         raw = await self._llm.generate_json(

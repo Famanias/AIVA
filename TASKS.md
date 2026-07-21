@@ -68,9 +68,9 @@ Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 - [x] Implement Research Agent (web search → source gathering)
 - [x] Implement Outline Agent (sources → structured outline, style-aware)
 - [x] Implement Script + Director Agent (combined LLM call: narrative text + scene visual_type/action/camera/transition/tone)
-- [ ] Refactor Prompt Library to use `ContentStrategy` abstraction (`ShortFormStrategy` vs `LongFormStrategy`).
-- [ ] Introduce `GenerationProfile` into the pipeline payload, removing hardcoded assumptions about duration and aspect ratio.
-- [ ] Update `ShortFormStrategy` prompt templates for High-Retention Pacing (Hook → Outline → Script → Scenes).
+- [x] Refactor Prompt Library to use `ContentStrategy` abstraction (`ShortFormStrategy` vs `LongFormStrategy`).
+- [x] Introduce `GenerationProfile` into the pipeline payload, removing hardcoded assumptions about duration and aspect ratio.
+- [x] Update `ShortFormStrategy` prompt templates for High-Retention Pacing (Hook → Outline → Script → Scenes).
 - [x] Validate JSON schema output from combined agent
 
 ## 6. Voice & Subtitle Pipeline

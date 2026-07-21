@@ -38,13 +38,30 @@ class Encoder:
                 vcodec = "libx264"
                 print("[Encoder] NVENC unavailable, falling back to libx264")
 
-        cmd = ["ffmpeg", "-y"]
+        import shutil
+        ffmpeg_bin = shutil.which("ffmpeg")
+        if not ffmpeg_bin and os.name == 'nt':
+            # Fallback for Windows if winget installed it but PATH isn't refreshed
+            winget_path = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe")
+            if os.path.exists(winget_path):
+                ffmpeg_bin = winget_path
+        
+        if not ffmpeg_bin:
+            ffmpeg_bin = "ffmpeg" # Let subprocess fail with WinError 2 if really not found
+
+        cmd = [ffmpeg_bin, "-y"]
         
         for inp in inputs:
             cmd.extend(["-i", inp])
             
         if filter_complex:
             cmd.extend(["-filter_complex", filter_complex])
+        else:
+            # If no filter_complex exists, pads must be raw stream indices (e.g. 0:v instead of [0:v])
+            if video_pad:
+                video_pad = video_pad.strip("[]")
+            if audio_pad:
+                audio_pad = audio_pad.strip("[]")
             
         # Map outputs
         if video_pad:
@@ -78,9 +95,10 @@ class Encoder:
 
         # Emit Manifest
         manifest_path = output_path.replace(".mp4", "_manifest.json")
-        Encoder._write_manifest(model, manifest_path, output_path, (time.time() - start_time) * 1000)
+        render_time = int((time.time() - start_time) * 1000)
+        Encoder._write_manifest(model, manifest_path, output_path, render_time)
 
-        return (time.time() - start_time) * 1000
+        return render_time
 
     @staticmethod
     def _write_manifest(model: CompositionModel, manifest_path: str, output_path: str, render_time_ms: float):

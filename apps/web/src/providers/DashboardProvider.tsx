@@ -99,10 +99,9 @@ export function DashboardProvider({
   // Derive Pipeline Stages from the current job step and history
   const stages = useMemo<PipelineStage[]>(() => {
     const sequence = [
-      'queued', 'research', 'outline', 'script_direction', 'brand_safety_check', 
-      'voiceover', 'subtitle_extraction', 'scene_preview', 'scene_render', 
-      'composition', 'rendering', 'thumbnail', 'metadata', 
-      'cost_reconciliation', 'upload', 'notify', 'completed'
+      'queued', 'research', 'outline', 'script_direction', 
+      'voiceover', 'subtitle_extraction', 'assets', 'rendering', 
+      'composition', 'completed'
     ]
 
     const currentIndex = sequence.indexOf(job?.current_step || 'queued')
@@ -115,10 +114,11 @@ export function DashboardProvider({
       } else if (index < currentIndex || project?.status === 'completed') {
         status = 'completed'
       } else if (index === currentIndex) {
-        if (project?.status === 'failed') status = 'failed'
-        else if (project?.status === 'paused') status = 'paused'
-        else if (project?.status === 'cancelled') status = 'cancelled'
-        else if (project?.status === 'cancelling') status = 'cancelling'
+        const pStatus = project?.status as string | undefined
+        if (pStatus === 'failed') status = 'failed'
+        else if (pStatus === 'paused') status = 'paused'
+        else if (pStatus === 'cancelled') status = 'cancelled'
+        else if (pStatus === 'cancelling') status = 'cancelling'
         else status = 'running'
       }
 
@@ -148,8 +148,8 @@ export function DashboardProvider({
         outline: stages.find(s => s.id === 'outline')?.status === 'completed' ? 'ready' : 'pending',
         script: stages.find(s => s.id === 'script_direction')?.status === 'completed' ? 'ready' : 'pending',
         voiceover: stages.find(s => s.id === 'voiceover')?.status === 'completed' ? 'ready' : 'pending',
-        assets: 'pending',
-        finalVideo: 'pending'
+        assets: stages.find(s => s.id === 'assets')?.status === 'completed' ? 'ready' : 'pending',
+        finalVideo: stages.find(s => s.id === 'composition')?.status === 'completed' ? 'ready' : 'pending'
       },
       metrics: {
         stageDurationMs: 0,

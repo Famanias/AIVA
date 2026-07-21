@@ -3,10 +3,11 @@
 //
 // Prompts are structured objects with typed variable slots.
 // They are never hardcoded raw strings inside agent implementations.
-// See RULES Rule 7 — Zero Hardcoding.
+// See RULES Rule 8 — Zero Hardcoding, Rule 7 — Architecture Must Remain Media-Length Agnostic.
 // =============================================================================
 
-import type { VideoStyle } from '@aiva/shared-types';
+import type { VideoStyle, GenerationProfile, ContentStrategy } from '@aiva/shared-types';
+import { SHORT_FORM_PROFILE } from '@aiva/shared-types';
 
 // =============================================================================
 // Template Types
@@ -27,6 +28,8 @@ export interface ResearchPromptVars {
   topic: string;
   outlinePoint: string;
   language: string;
+  /** The active GenerationProfile. Defaults to SHORT_FORM_PROFILE. */
+  profile?: GenerationProfile;
 }
 
 /**
@@ -35,9 +38,10 @@ export interface ResearchPromptVars {
 export interface OutlinePromptVars {
   topic: string;
   videoStyle: VideoStyle;
-  durationTargetMinutes: number;
   language: string;
   researchSummary: string;
+  /** The active GenerationProfile. Defaults to SHORT_FORM_PROFILE. */
+  profile?: GenerationProfile;
 }
 
 /**
@@ -50,11 +54,31 @@ export interface ScriptDirectorPromptVars {
   visualTypeWeights: Record<string, number>;
   allowedTemplates: string[];
   defaultCameraPacing: string;
-  durationTargetMinutes: number;
-  approxWordCount: number;
   rigActionList: string[];
   typographyTemplateList: string[];
   outline: string;
+  /** The active GenerationProfile. Defaults to SHORT_FORM_PROFILE. */
+  profile?: GenerationProfile;
+}
+
+// =============================================================================
+// Content Strategy Helpers
+// =============================================================================
+
+function getContentStrategyInstructions(strategy: ContentStrategy): string {
+  if (strategy === 'short_form') {
+    return `CONTENT STRATEGY: ShortFormStrategy
+- Hook within the FIRST 3 SECONDS — open with the most surprising or counterintuitive fact.
+- Build a fast retention arc: Hook → Tension/Curiosity Gap → Resolution → CTA.
+- Every sentence must earn attention. Cut anything that doesn't advance the story.
+- No slow introductions. No "In this video we will..." preamble.
+- Pacing: new visual or narrative beat every 2-6 seconds.`;
+  }
+  return `CONTENT STRATEGY: LongFormStrategy
+- Open with a strong hook, then establish credibility and scope.
+- Build through research → outline → chapters → script.
+- Allow depth: historical context, multiple perspectives, data-driven analysis.
+- Pacing can be moderate; build tension over longer arcs.`;
 }
 
 // =============================================================================
@@ -67,13 +91,17 @@ export interface ScriptDirectorPromptVars {
  * EDD §16.1, §33
  */
 export function buildResearchPrompt(vars: ResearchPromptVars): RenderedPrompt {
+  const profile = vars.profile ?? SHORT_FORM_PROFILE;
+  const strategyInstructions = getContentStrategyInstructions(profile.contentStrategy);
+
   return {
-    systemPrompt: `You are an expert research assistant helping to produce a high-quality YouTube video script.
+    systemPrompt: `You are an expert research assistant helping to produce a high-quality video script.
 Your task is to find accurate, relevant, and engaging information about a specific topic point.
 Focus on facts, statistics, stories, and examples that would make compelling video content.
+${strategyInstructions}
 Cite your sources clearly. Be concise and factual. Do not editorialize.`,
 
-    userPrompt: `Research the following topic point for a YouTube video about "${vars.topic}".
+    userPrompt: `Research the following topic point for a video about "${vars.topic}".
 
 TOPIC POINT TO RESEARCH:
 ${vars.outlinePoint}
@@ -82,7 +110,7 @@ Language: ${vars.language}
 
 Provide 3-5 key findings with supporting details. For each finding, include:
 - The key fact or story
-- Why it is relevant and engaging for a YouTube audience
+- Why it is relevant and engaging for a video audience
 - Any statistics, dates, or notable examples
 
 Format as a structured list. Be thorough but concise.`,
@@ -94,6 +122,11 @@ Format as a structured list. Be thorough but concise.`,
  * EDD §16.1
  */
 export function buildOutlinePrompt(vars: OutlinePromptVars): RenderedPrompt {
+  const profile = vars.profile ?? SHORT_FORM_PROFILE;
+  const targetSeconds = profile.targetDurationSeconds;
+  const approxWords = Math.round((targetSeconds / 60) * profile.pacing.wordsPerMinute);
+  const strategyInstructions = getContentStrategyInstructions(profile.contentStrategy);
+
   const styleGuidance: Record<VideoStyle, string> = {
     stickman_animation:
       'Structure the outline around scene beats and emotional moments. Each point should describe a clear narrative beat (setup, conflict, resolution). Favor dramatic, relatable, story-driven structure.',
@@ -108,17 +141,19 @@ export function buildOutlinePrompt(vars: OutlinePromptVars): RenderedPrompt {
   };
 
   return {
-    systemPrompt: `You are an expert YouTube video scriptwriter and content strategist.
+    systemPrompt: `You are an expert video scriptwriter and content strategist.
 Your task is to create a detailed, engaging video outline that will be used to write a full script.
 The outline must be appropriate for the specified video style and duration target.
+${strategyInstructions}
 Output only valid JSON — no markdown, no preamble, no explanation.`,
 
     userPrompt: `Create a video outline for the following topic.
 
 TOPIC: ${vars.topic}
 VIDEO STYLE: ${vars.videoStyle}
-TARGET DURATION: ${vars.durationTargetMinutes} minutes (~${vars.durationTargetMinutes * 150} words)
+TARGET DURATION: ${targetSeconds} seconds (~${approxWords} words)
 LANGUAGE: ${vars.language}
+NARRATIVE STYLE: ${profile.narrativeStyle}
 
 STYLE GUIDANCE: ${styleGuidance[vars.videoStyle]}
 
@@ -128,7 +163,7 @@ ${vars.researchSummary}
 Output a JSON object with this exact structure:
 {
   "title": "string — engaging video title",
-  "hook": "string — 1-2 sentence hook for the opening scene",
+  "hook": "string — first 1-2 sentences that MUST capture attention within ${profile.pacing.hookWithinSeconds} seconds",
   "points": [
     {
       "index": 0,
@@ -139,7 +174,7 @@ Output a JSON object with this exact structure:
   "conclusion": "string — 1-2 sentence call-to-action / closing"
 }
 
-Include 8-12 outline points appropriate for a ${vars.durationTargetMinutes}-minute video.`,
+Include outline points appropriate for a ${targetSeconds}-second video. For short-form, keep it tight: 3-6 punchy points maximum.`,
   };
 }
 
@@ -149,14 +184,22 @@ Include 8-12 outline points appropriate for a ${vars.durationTargetMinutes}-minu
  * EDD §16.1, §33
  */
 export function buildScriptDirectorPrompt(vars: ScriptDirectorPromptVars): RenderedPrompt {
+  const profile = vars.profile ?? SHORT_FORM_PROFILE;
+  const targetSeconds = profile.targetDurationSeconds;
+  const approxWords = Math.round((targetSeconds / 60) * profile.pacing.wordsPerMinute);
+  const strategyInstructions = getContentStrategyInstructions(profile.contentStrategy);
+  const [minCut, maxCut] = profile.pacing.visualCutIntervalSeconds;
+
   const weightsSummary = Object.entries(vars.visualTypeWeights)
     .map(([type, weight]) => `${type}: ${Math.round(weight * 100)}%`)
     .join(', ');
 
   return {
-    systemPrompt: `You are a master YouTube automation-channel scriptwriter and visual director, specializing in high-retention narration in the style requested.
+    systemPrompt: `You are a master video scriptwriter and visual director, specializing in high-retention narration.
 
 Your output must strictly conform to valid JSON following the schema provided.
+
+${strategyInstructions}
 
 For every scene, in the SAME PASS as writing the narrative text, decide:
 - visual_type: constrained to the allowed types for the given style
@@ -167,16 +210,19 @@ Rules:
 - Never invent a template parameter not in the provided allowed lists.
 - Never include markdown code blocks or conversational preamble in your response.
 - Output only the raw JSON object.
-- Every scene must have a script_segment of at least 80 words.
-- Total word count across all scenes must reach approximately ${vars.approxWordCount} words.`,
+- Each scene narration should be 10-25 words (short-form) — tight and punchy.
+- Visual cuts should land every ${minCut}-${maxCut} seconds.
+- Total word count across all scenes must reach approximately ${approxWords} words.`,
 
-    userPrompt: `Write a complete YouTube video script with visual direction for the following:
+    userPrompt: `Write a complete video script with visual direction for the following:
 
 TOPIC: ${vars.topic}
 LANGUAGE: ${vars.language}
 VIDEO STYLE: ${vars.videoStyle}
-TARGET DURATION: ${vars.durationTargetMinutes} minutes (~${vars.approxWordCount} words total)
+TARGET DURATION: ${targetSeconds} seconds (~${approxWords} words total)
 CAMERA PACING: ${vars.defaultCameraPacing}
+NARRATIVE STYLE: ${profile.narrativeStyle}
+PLATFORM: ${profile.platform.platform} (${profile.platform.aspectRatio}, ${profile.platform.width}x${profile.platform.height})
 
 VISUAL TYPE DISTRIBUTION (approximate):
 ${weightsSummary}
@@ -196,7 +242,7 @@ Output a JSON object with this exact structure:
   "scenes": [
     {
       "sequence_number": 1,
-      "script_segment": "string — full narration text for this scene (minimum 80 words)",
+      "script_segment": "string — narration text for this scene",
       "visual_type": "character_animation | broll | ai_image | kinetic_typography",
       "animation_action": "string | null — only for character_animation",
       "camera_style": "string | null — only for broll or ai_image",
@@ -210,7 +256,7 @@ Output a JSON object with this exact structure:
   ]
 }
 
-Divide the script into at least 15 granular scenes. Each scene should represent a distinct narrative beat.`,
+Divide the script into scenes where each scene represents a distinct visual beat (${minCut}-${maxCut} seconds of content).`,
   };
 }
 
@@ -230,7 +276,7 @@ export function buildSceneRedirectionPrompt(
   vars: SceneRedirectionPromptVars
 ): RenderedPrompt {
   return {
-    systemPrompt: `You are a visual director for YouTube automation videos.
+    systemPrompt: `You are a visual director for videos.
 Given one edited scene's narrative text, its video style, and the allowed template constraints,
 re-derive the scene's visual_type and template parameters.
 Respond with only the JSON object for this one scene. No markdown, no explanation.`,
@@ -258,3 +304,5 @@ Output a JSON object:
 }`,
   };
 }
+
+

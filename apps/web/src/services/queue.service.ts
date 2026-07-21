@@ -8,7 +8,7 @@ export class QueueService {
    * @param jobId The Supabase job ID to process
    * @param priority Lower numbers = higher priority
    */
-  static async enqueuePipelineJob(jobId: string, priority: number = 0) {
-    await queueManager.enqueueJob(jobId, priority)
+  static async enqueuePipelineJob(jobId: string, step: string, priority: number = 0) {
+    await queueManager.enqueueJob(jobId, step, priority)
   }
 }

@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@9.0.0",
-
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
@@ -12,12 +11,14 @@
     "clean": "turbo clean && rimraf node_modules",
     "test:pipeline": "tsx scripts/certify_pipeline.ts --suite=golden",
     "bootstrap": "pnpm install && node packages/database/scripts/validate_migrations.mjs",
-    "certify": "CI_MOCK_PROVIDERS=true pnpm test:pipeline"
+    "certify": "cross-env CI_MOCK_PROVIDERS=true pnpm test:pipeline"
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
+    "rimraf": "^5.0.0",
+    "tsx": "^4.23.1",
     "turbo": "^2.0.0",
-    "typescript": "^5.4.0",
-    "rimraf": "^5.0.0"
+    "typescript": "^5.4.0"
   },
   "engines": {
     "node": ">=20.0.0",

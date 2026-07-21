@@ -18,6 +18,7 @@ export class RemotionBackend implements IRenderBackend {
         // In a real app this points to the Remotion Root.
         entryPoint: path.resolve(__dirname, '../templates/index.ts'),
         webpackOverride: (config) => config,
+        ignoreRegisterRootWarning: true,
       })
       console.log(`[RemotionBackend] Bundled in ${Date.now() - startBundle}ms to ${this.bundleLocation}`)
     }

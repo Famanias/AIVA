@@ -16,7 +16,7 @@
 |---|---|---|---|
 | P0 | Repository Initialization | Documentation, architecture, project setup | ✅ Complete |
 | P1 | Prove the Loop (Short-Form Engine) | Short-form production engine (vertical, fast rendering) | ✅ Complete |
-| P2 | Publishing & Automation | Publishing, scheduling, analytics, automation | Months 3–4 |
+| P2 | Publishing & Automation | Publishing, scheduling, analytics, automation | 🚧 In Progress |
 | P3 | Long-Form Generation | Multi-tenancy, long-form documentaries | Months 5–7 |
 | P4 | Multi-Agent Production Studio | Localization, custom agent flows, studio scale | Months 8+ |
 

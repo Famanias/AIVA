@@ -43,7 +43,11 @@ export class WorkerGateway {
     timeoutSignal.addEventListener('abort', onTimeout)
 
     try {
-      const response = await fetch(`${this.baseUrl}${path}`, {
+      const fetchUrl = path.startsWith('http://') || path.startsWith('https://') 
+        ? path 
+        : `${this.baseUrl}${path}`
+        
+      const response = await fetch(fetchUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

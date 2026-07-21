@@ -6,7 +6,7 @@ export const Root: React.FC = () => {
   return (
     <>
       <Composition
-        id="default_stickman"
+        id="stickman"
         component={CharacterRig}
         durationInFrames={300}
         fps={30}
@@ -18,7 +18,7 @@ export const Root: React.FC = () => {
         }}
       />
       <Composition
-        id="default_ken_burns"
+        id="documentary"
         component={KenBurns}
         durationInFrames={300}
         fps={30}
