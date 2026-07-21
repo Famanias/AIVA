@@ -48,6 +48,8 @@ This is a Turborepo monorepo:
 - Two distinct rendering styles: Stickman Animation and Ken-Burns Documentary.
 - Golden Suite CI certification pipeline running on GitHub Actions.
 - Real-time cost tracking and non-blocking telemetry.
+- Secure local artifact streaming (Media Proxy) for seamless dashboard previewing without cloud storage dependency.
+- Native Windows FFmpeg composition support.
 
 ## Current Limitations
 - **Single User / Single Box**: The MVP assumes a single tenant running on a single VPS. No RBAC or multi-tenancy is implemented yet.
