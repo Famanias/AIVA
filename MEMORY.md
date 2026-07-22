@@ -131,6 +131,16 @@ The baseline environments are established as Node.js 20 (for Remotion/Next.js) a
 - **2026-07-20**: Refined Queue Control System schema definitions. Separated the concept of execution stage (`job_step`) from job lifecycle events (cancellations). Added explicit `cancelled_at`, `cancel_reason`, and `cancel_requested_by` metadata fields to the `jobs` table to preserve a complete audit trail without mutating active pipeline stages.
 - **2026-07-20**: Pivoted MVP focus to short-form video generation while explicitly preserving the modular, media-length agnostic pipeline architecture. Introduced `GenerationProfile`, `PlatformProfile`, and `ContentStrategy` abstractions into the architectural documentation to ensure generation defaults are configurable rather than hardcoded.
 - **2026-07-21**: Debugged a critical pipeline failure at the FFmpeg composition stage. The composition engine executed inside a rogue background Docker container due to a port 8000 binding conflict, causing Windows file paths (e.g., `D:\repos\...`) to fail validation because the Linux container could not resolve them. Stopped the container, shifted the Python worker natively to Windows, implemented dynamic path resolution for the dummy TTS audio files, and installed FFmpeg via `winget` to successfully satisfy pipeline validation.
+- **2026-07-22**: Resolved duplicate BullMQ worker instantiation caused by Next.js HMR by binding `Worker` to `globalThis.__bullmq_worker`. Upgraded `edge-tts` to `7.2.8` to fix breaking Microsoft WebSocket 403 handshake changes, and pinned `httpx` to `0.27.2` to resolve `openai 1.51.0` `proxies=` keyword argument incompatibilities. Corrected Supabase JWT service role key authentication in `.env`.
+- **2026-07-22**: Fixed semantic video rendering issues. Resolved multi-scene background track letterboxing and bottom-clipping by introducing aspect ratio scaling, cropping, and sample aspect ratio normalization (`scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1`) in `graph_builder.py`. Concatenated multi-scene audio narrations in `CompositionHandler.ts` and downloaded real 9:16 stock media images into `sample_project_artifact.json`, producing high-definition 4.3 MB master vertical MP4 videos (`master_...mp4`).
+
+---
+
+# Architectural Decisions
+
+## AD-018 — FFmpeg Background Stream Scaling and Aspect Ratio Normalization
+
+Background media assets (images or video clips) have varying aspect ratios and resolutions. When concatenating multiple background tracks in FFmpeg's filtergraph (`graph_builder.py`), every background input stream MUST be scaled to the target resolution (e.g. 1080x1920 9:16 vertical), centered, cropped, and assigned Sample Aspect Ratio (`scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1`) before concatenation or overlay. This eliminates blank canvas letterboxing, black top-half offsets, and frame alignment bugs across multi-scene compositions.
 
 ---
 
@@ -141,6 +151,7 @@ The baseline environments are established as Node.js 20 (for Remotion/Next.js) a
 - **Docker vs Local Environment Port Conflicts (Windows)**: When testing a local stack (Next.js, Uvicorn) on a machine that previously ran `docker-compose up -d`, Docker containers bound to `0.0.0.0:8000` will silently intercept HTTP traffic intended for a local `localhost:8000` process. This causes the orchestrator to communicate with a stale containerized environment, leading to inexplicable cross-OS path validation errors when passing absolute Windows paths to a Linux container.
 - **Windows System Dependencies in Python Subprocesses**: When transitioning from a Dockerized backend (where dependencies like FFmpeg are pre-installed in the Linux image) to a local Windows execution environment, explicit care must be taken to ensure system-level binaries (like `ffmpeg.exe`) are installed (e.g. via `winget`) and added to the user's system `PATH`. Python's `subprocess` will throw `[WinError 2]` if they are missing.
 - **FFmpeg Map Syntax with Empty Filter Complex**: If FFmpeg is called without a `-filter_complex` argument, output mappings (`-map`) must reference raw stream indices (e.g., `0:v`). Providing bracketed pad names (e.g., `[0:v]`) will cause FFmpeg to fail with `Invalid argument` (exit code `4294967274` on Windows), as bracketed pads are strictly reserved for named outputs from a filter graph.
+- **Upstream Library API Changes (`edge-tts` & `httpx`)**: When third-party packages make breaking changes to internal WebSocket protocols or constructor signatures (such as `httpx 0.28` removing `proxies=`), running automated unit tests or standalone isolation scripts immediately exposes whether the bug is upstream vs application-level. Pinning exact minor versions in `requirements.txt` (`httpx==0.27.2`, `edge-tts>=7.0.0`) prevents sudden environment regressions.
 
 ---
 

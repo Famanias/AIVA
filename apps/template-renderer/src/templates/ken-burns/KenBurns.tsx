@@ -15,12 +15,12 @@ export const KenBurns: React.FC<{ params: any; wordTimings: any[] }> = ({ params
   }) * 0.2 + 1; // 1 to 1.2
 
   return (
-    <AbsoluteFill style={{ backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
-      <div style={{ transform: `scale(${scale})` }}>
-        <h1 style={{ color: 'white', fontSize: '100px', fontFamily: 'sans-serif' }}>
-          Ken Burns Stub
-        </h1>
-      </div>
+    <AbsoluteFill style={{ backgroundColor: 'transparent' }}>
+      {/* 
+        This is a transparent overlay layer. 
+        The FFmpeg compositor will place the downloaded Pexels/SDXL background tracks underneath this layer, 
+        and the SubtitleGenerator will burn the Whisper subtitles on top of it.
+      */}
     </AbsoluteFill>
   );
 };

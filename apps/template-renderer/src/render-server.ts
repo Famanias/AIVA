@@ -31,12 +31,18 @@ app.post('/render', async (req, res) => {
 
     const ir = body as PipelineIR
     
-    // 2. Wrap in RenderJob (Injects configuration)
+    // 2. Wrap in RenderJob (Injects dynamic CanvasConfig geometry)
+    const canvasConfig = ir.metadata?.canvasConfig || {}
     const job: RenderJob = {
       id: `job_${Date.now()}`,
       projectId: ir.metadata?.projectId || 'unknown',
       templateId: ir.templateFamily,
-      config: DEFAULT_RENDER_CONFIG,
+      config: {
+        ...DEFAULT_RENDER_CONFIG,
+        width: canvasConfig.width || DEFAULT_RENDER_CONFIG.width,
+        height: canvasConfig.height || DEFAULT_RENDER_CONFIG.height,
+        fps: canvasConfig.fps || DEFAULT_RENDER_CONFIG.fps
+      },
       ir
     }
 

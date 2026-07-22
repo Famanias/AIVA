@@ -40,22 +40,28 @@ class FilterGraphBuilder:
         if model.music_track:
             inputs.append(model.music_track.storage_key)
             
-        # 2. Build Video Graph
+        # 2. Build Video Graph driven by dynamic CanvasConfig geometry
         video_out_pad = ""
+        width = model.output_settings.width or 1080
+        height = model.output_settings.height or 1920
         
-        # If we have multiple backgrounds, we concatenate them
+        # If we have multiple backgrounds, we scale and concatenate them
         if len(model.background_tracks) > 1:
-            concat_inputs = "".join([f"[{bg_idx_start + i}:v]" for i in range(len(model.background_tracks))])
+            for i in range(len(model.background_tracks)):
+                idx = bg_idx_start + i
+                filters.append(f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1[v_scaled_{i}]")
+            concat_inputs = "".join([f"[v_scaled_{i}]" for i in range(len(model.background_tracks))])
             filters.append(f"{concat_inputs}concat=n={len(model.background_tracks)}:v=1:a=0[bg_concat]")
             current_bg = "[bg_concat]"
         elif len(model.background_tracks) == 1:
-            current_bg = f"[{bg_idx_start}:v]"
+            filters.append(f"[{bg_idx_start}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1[bg_scaled]")
+            current_bg = "[bg_scaled]"
         else:
             current_bg = ""
 
         # Overlay Remotion visual layer onto background
         if overlay_idx >= 0 and current_bg:
-            filters.append(f"{current_bg}[{overlay_idx}:v]overlay=shortest=1[v_mixed]")
+            filters.append(f"{current_bg}[{overlay_idx}:v]overlay=0:0:shortest=1[v_mixed]")
             video_out_pad = "[v_mixed]"
         elif overlay_idx >= 0:
             video_out_pad = f"[{overlay_idx}:v]"

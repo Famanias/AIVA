@@ -42,12 +42,14 @@ class AudioMixer:
             return ";".join(filters), "[outa]", input_offset
             
         elif voice_idx >= 0:
-            # Only voice
-            return "", f"[{voice_idx}:a]", input_offset
+            # Only voice: route through anull filter to produce a valid [outa] pad for filter_complex
+            filters.append(f"[{voice_idx}:a]anull[outa]")
+            return ";".join(filters), "[outa]", input_offset
             
         elif music_idx >= 0:
-            # Only music
-            return "", f"[{music_idx}:a]", input_offset
+            # Only music: route through anull filter to produce a valid [outa] pad for filter_complex
+            filters.append(f"[{music_idx}:a]anull[outa]")
+            return ";".join(filters), "[outa]", input_offset
             
         # No audio
         return "", "", input_offset

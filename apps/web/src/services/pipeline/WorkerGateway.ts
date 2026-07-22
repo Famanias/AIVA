@@ -25,7 +25,7 @@ export class WorkerGateway {
     
     const abortController = new AbortController()
     let pollingInterval: NodeJS.Timeout | null = null
-    const jobId = payload.trace_id // Extracted from standard handler payloads
+    const jobId = payload.trace_id || payload.metadata?.jobId || payload.job_id
 
     if (jobId) {
       pollingInterval = setInterval(async () => {
@@ -54,7 +54,8 @@ export class WorkerGateway {
           'Authorization': `Bearer ${this.authToken}`
         },
         body: JSON.stringify(payload),
-        signal: abortController.signal
+        signal: abortController.signal,
+        cache: 'no-store'
       })
 
       if (!response.ok) {

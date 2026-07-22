@@ -72,3 +72,30 @@ ILLMProvider
 ```
 
 The pipeline orchestrator never imports SDKs directly. All external dependencies (LLMs, TTS, Image Generators, Stock APIs) conform to standardized TypeScript and Python interfaces.
+
+## 8. Deterministic Project Artifact Packages
+
+To completely decouple AI Generation from Rendering & Composition, AIVA persists every pipeline stage into a versioned **Project Artifact Package** (`storage/projects/{project_id}/revisions/v{revision}/`).
+
+- **Generation Boundary**: AI workers execute Research, Scripting, Narration, and Asset resolution, producing immutable JSON + binary artifacts alongside raw LLM responses for auditability.
+- **Rendering Boundary**: The Rendering engine (Remotion) and Composition engine (FFmpeg) act as a pure, deterministic build step that consumes the artifact package with **zero LLM/TTS API calls**.
+- **Resumability**: Checkpoints enable partial re-runs (`POST /api/v1/projects/[id]/execute`) starting from any stage (e.g., re-rendering with another visual template without regenerating scripts).
+
+## 9. Data-Driven CanvasConfig & Resolution-Agnostic Geometry Engine
+
+Rendering geometry is completely decoupled from high-level creative strategy (`GenerationProfile`).
+
+```
+GenerationProfile (Creative Intent: Shorts, Retention, Pacing)
+       │
+       ▼
+CanvasConfig (Rendering Geometry: width, height, fps, aspect_ratio, pixel_format)
+       │
+       ├──► Remotion Engine: Renders transparent VP9 WebM overlay (yuva420p)
+       └──► FFmpeg Composition: Scales/crops backgrounds to (width, height) & overlays @ (0, 0)
+```
+
+- **CanvasConfig**: Strongly typed object (`{ width, height, fps, aspect_ratio, pixel_format }`) passed across API boundaries.
+- **Transparent WebM Overlays**: Remotion exports transparent overlays (`pixelFormat: 'yuva420p'`, `imageFormat: 'png'`), preserving in-memory Webpack bundle caching.
+- **Multi-Format Support**: The pipeline handles 9:16 Shorts (1080x1920), 16:9 YouTube (1920x1080), and 1:1 Square (1080x1080) dynamically with zero hardcoded code changes.
+

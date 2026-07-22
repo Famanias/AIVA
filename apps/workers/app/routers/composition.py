@@ -15,8 +15,7 @@ async def composite_video(model: CompositionModel) -> Dict[str, Any]:
         # In a full deployment, progress events could be written to a database
         # or pushed to a Redis pub/sub queue for the Dashboard to consume via WebSockets.
         def emit_progress(msg: str, pct: int):
-            # Placeholder for WebSocket / DB progress emitter
-            print(f"[{model.job_id}] Progress: {pct}% - {msg}")
+            pass # Progress emitter can send to WebSockets/Redis when connected
             
         result = CompositionEngine.run(model, emit_progress=emit_progress)
         

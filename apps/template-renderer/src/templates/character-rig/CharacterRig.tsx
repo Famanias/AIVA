@@ -6,13 +6,12 @@ export const CharacterRig: React.FC<{ params: any; wordTimings: any[] }> = ({ pa
   const frame = useCurrentFrame();
 
   return (
-    <AbsoluteFill style={{ backgroundColor: 'white', justifyContent: 'center', alignItems: 'center' }}>
-      <h1 style={{ fontSize: '100px', fontFamily: 'sans-serif' }}>
-        Character Rig Stub
-      </h1>
-      <p style={{ fontSize: '40px', fontFamily: 'sans-serif' }}>
-        Frame {frame} / {durationInFrames}
-      </p>
+    <AbsoluteFill style={{ backgroundColor: 'transparent' }}>
+      {/* 
+        This is a transparent overlay layer. 
+        The FFmpeg compositor will place the downloaded Pexels/SDXL background tracks underneath this layer, 
+        and the SubtitleGenerator will burn the Whisper subtitles on top of it.
+      */}
     </AbsoluteFill>
   );
 };

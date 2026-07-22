@@ -162,8 +162,8 @@ export class PipelineExecutor {
   private calculateProgress(step: string): number {
     const sequence = [
       'research', 'outline', 'script_direction', 'brand_safety_check',
-      'voiceover', 'subtitle_extraction', 'scene_preview', 'scene_render',
-      'composition', 'rendering', 'thumbnail', 'metadata',
+      'voiceover', 'subtitle_extraction', 'assets', 'rendering',
+      'composition', 'thumbnail', 'metadata',
       'cost_reconciliation', 'upload', 'notify', 'completed'
     ]
     const index = sequence.indexOf(step)

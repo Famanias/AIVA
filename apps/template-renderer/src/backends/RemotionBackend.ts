@@ -59,9 +59,16 @@ export class RemotionBackend implements IRenderBackend {
     const renderStart = Date.now()
 
     await renderMedia({
-      composition: remotionComposition,
+      composition: {
+        ...remotionComposition,
+        width: job.config.width,
+        height: job.config.height,
+        fps: job.config.fps
+      },
       serveUrl,
       codec: 'vp9',
+      pixelFormat: 'yuva420p',
+      imageFormat: 'png',
       outputLocation: outputPath,
       inputProps,
       concurrency: job.config.maxConcurrency

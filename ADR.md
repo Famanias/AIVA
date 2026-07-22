@@ -68,3 +68,15 @@ This document tracks the major architectural decisions made during Phase 1 of th
 **Context**: High-fidelity TTS models like Kokoro-82M and Coqui are heavily dependent on PyTorch and CUDA. Running these locally alongside the LLM and Node processes frequently exhausts memory on developer machines, causing timeouts.
 **Decision**: Configure the TTS provider abstraction to use `EdgeTTSProvider` during local development as a fallback, fetching synthesized speech via Microsoft's cloud API.
 **Consequences**: Drastically reduces local machine load during development while maintaining accurate timing extraction for the FFmpeg pipeline, enabling faster end-to-end iteration.
+
+## ADR 014: Deterministic Build & Artifact Package Architecture
+**Context**: Regenerating expensive LLM, search, and TTS outputs during rendering or composition debugging wastes API tokens and slows down developer iteration.
+**Decision**: Decouple the AI Generation Pipeline from the Rendering & Composition Pipeline. Save every stage output into a versioned, portable `Project Artifact Package` (`storage/projects/{id}/revisions/v{rev}/`).
+**Consequences**: Rendering and composition become pure, deterministic build steps that consume persisted artifact packages with zero LLM API calls required. Enables checkpoint resumability (`POST /api/v1/projects/[id]/execute`).
+
+## ADR 016: Strongly Typed CanvasConfig & Dynamic Resolution-Agnostic Rendering Engine
+**Context**: Hardcoding video viewport dimensions (e.g. 1080x1920 portrait) across rendering and composition modules causes visual letterboxing, lower-half image clipping, and tight coupling to specific video formats.
+**Decision**: Separate creative strategy (`GenerationProfile`) from pure rendering geometry (`CanvasConfig`). Express viewport geometry as strongly typed objects (`{ width, height, fps, aspect_ratio }`) passed across API boundaries. FFmpeg graph builder derives scaling (`scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1`), cropping, and overlay coordinates dynamically. Remotion exports transparent VP9 WebM with `pixelFormat: 'yuva420p'` and `imageFormat: 'png'`.
+**Consequences**: Eliminates black letterboxing and lower-half canvas masking. The pipeline dynamically supports 9:16 Shorts (1080x1920), 16:9 YouTube (1920x1080), and 1:1 Square (1080x1080) video formats without hardcoded logic.
+
+

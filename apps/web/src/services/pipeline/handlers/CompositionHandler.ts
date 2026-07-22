@@ -17,8 +17,41 @@ export class CompositionHandler extends BaseHandler {
 
     await context.logger.info('Dispatching PipelineState to FFmpeg Composition Engine...')
 
+    const scenes = state.scenes || state.sceneDirections || state.script?.sceneDirections || state['03_script']?.sceneDirections || []
+    const voice = state.voice || state['04_voice'] || {}
+    const assets = state.assets || state['06_assets'] || {}
+
+    const rawBgTracks = assets.background_tracks || (Array.isArray(scenes) ? scenes
+      .filter((s: any) => s.asset_manifest?.background?.storage_key)
+      .map((s: any) => ({
+        id: String(s.id || s.sequence_number),
+        type: 'video',
+        storage_key: s.asset_manifest.background.storage_key,
+        duration: s.duration || 4.5,
+        mime_type: 'video/mp4'
+      })) : [])
+
+    const bgTracks = rawBgTracks.map((t: any) => ({
+      ...t,
+      mime_type: t.mime_type || (t.type === 'image' ? 'image/jpeg' : 'video/mp4')
+    }))
+
+    const voiceUrl = voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || null
+
+    const profile = context.project?.generation_profile || {}
+    const aspectRatio = profile.target_aspect_ratio || '9:16'
+    let width = 1080
+    let height = 1920
+
+    if (aspectRatio === '16:9') {
+      width = 1920
+      height = 1080
+    } else if (aspectRatio === '1:1') {
+      width = 1080
+      height = 1080
+    }
+
     // 2. Map PipelineState to CompositionModel contract
-    // We assume state.assets holds the background references from Milestone 8
     const compositionModel = {
       trace_id: context.job.id,
       project_id: context.project.id,
@@ -27,34 +60,29 @@ export class CompositionHandler extends BaseHandler {
         id: 'remotion_overlay',
         type: 'video',
         storage_key: state.render.outputUrl,
-        duration: state.scenes.reduce((acc: number, s: any) => acc + (s.duration || 0), 0),
+        duration: Array.isArray(scenes) ? scenes.reduce((acc: number, s: any) => acc + (s.duration || 4.5), 0) : 10.0,
         mime_type: 'video/webm'
       },
-      background_tracks: state.scenes
-        .filter((s: any) => s.asset_manifest?.background?.storage_key)
-        .map((s: any) => ({
-          id: s.id,
-          type: 'video',
-          storage_key: s.asset_manifest.background.storage_key,
-          duration: s.duration,
-          mime_type: 'video/mp4'
-        })),
-      voice_track: state.voice?.audioUrl ? {
+      background_tracks: bgTracks,
+      voice_track: voiceUrl ? {
         id: 'voice_main',
         type: 'audio',
-        storage_key: state.voice.audioUrl,
-        duration: 0, // Ignored by FFmpeg mixer as it aligns to video
-        mime_type: 'audio/wav'
+        storage_key: voiceUrl,
+        duration: 0,
+        mime_type: 'audio/mp3'
       } : null,
-      music_track: null, // Placeholder for MVP
+      music_track: null,
       sfx_tracks: [],
-      word_timings: state.voice?.wordTimings || [],
+      word_timings: voice.wordTimings || voice.word_timings || [],
       output_settings: {
         codec: 'h264',
         hardware_acceleration: 'auto',
         bitrate: '8M',
         preset: 'fast',
-        resolution: '1080x1920',
+        resolution: `${width}x${height}`,
+        width,
+        height,
+        aspect_ratio: aspectRatio,
         fps: 30
       }
     }

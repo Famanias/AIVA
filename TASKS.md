@@ -117,14 +117,23 @@ Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 - [x] Populate `cost_ledger_entries` per stage
 - [x] Expose queue wait time, stage duration, and provider latency in Dashboard
 
-## 12. CI & Pipeline-Level Testing
+## 13. Deterministic Artifact Persistence & Resumability
 
-- [ ] Implement GitHub Actions CI (Lint → Type Check → Build → Docker)
-- [ ] Implement full pipeline validation tests (Topic → IR JSON)
-
+- [x] Resolve HMR BullMQ worker duplication via `globalThis.__bullmq_worker` global singleton
+- [x] Resolve EdgeTTS HTTP 403 & `httpx 0.28` proxy parameter conflicts (`edge-tts 7.2.8`, `httpx 0.27.2`)
+- [x] Fix empty asset search queries (`query=""`) in `assets.py`
+- [x] Fix SDXL provider placeholder URL to valid image service
+- [x] Deduplicate composition progress logging streams in `engine.py`
+- [x] Implement fallback voiceover duration measurement in `edge_tts_provider.py`
+- [x] Implement `ArtifactRepository` for versioned Project Artifact Packages (`storage/projects/{id}/revisions/v{rev}/`)
+- [x] Implement Checkpoint Resumability API (`POST /api/v1/projects/[id]/execute`) with zero LLM API calls required during rendering
+- [x] Implement strongly typed `CanvasConfig` schema (`width`, `height`, `fps`, `aspect_ratio`) separating creative intent (`GenerationProfile`) from rendering geometry
+- [x] Implement Remotion transparent VP9 WebM alpha export (`pixelFormat: 'yuva420p'`, `imageFormat: 'png'`) with preserved Webpack bundle caching
+- [x] Implement dynamic FFmpeg canvas geometry scaling (`scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1`) and `0:0` overlay positioning across 9:16 Shorts (1080x1920) and 16:9 YouTube (1920x1080) video formats
 
 ---
 
 # Completed
 
-- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, and Telemetry/Cost Tracking.
+- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, and Deterministic Project Artifact Persistence System with Checkpoint Resumability.
+

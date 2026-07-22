@@ -11,14 +11,33 @@ export class RenderHandler extends BaseHandler {
   async execute(context: PipelineContext): Promise<string | null> {
     const state = context.state
 
+    const scenes = state.scenes || state.sceneDirections || state.script?.sceneDirections || state['03_script']?.sceneDirections || []
+    const voice = state.voice || state['04_voice'] || {}
+
     // 1. Validate Prerequisite State
-    if (!state.voice?.subtitles || state.scenes.length === 0) {
-      await context.logger.info('Rendering skipped: Waiting for user to edit timeline and generate subtitles in Studio UI.')
+    if (scenes.length === 0) {
+      await context.logger.info('Rendering skipped: No scene directions found in state.')
       return null // Gracefully exit to prevent BullMQ retry loops
     }
 
     let style = context.project.video_style || 'stickman'
     if (style === 'stickman_animation') style = 'stickman'
+
+    const wordTimings = voice.wordTimings || voice.word_timings || state['05_subtitles']?.subtitles || []
+    const audioUrl = voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || ''
+
+    const profile = context.project?.generation_profile || {}
+    const aspectRatio = profile.target_aspect_ratio || '9:16'
+    let width = 1080
+    let height = 1920
+
+    if (aspectRatio === '16:9') {
+      width = 1920
+      height = 1080
+    } else if (aspectRatio === '1:1') {
+      width = 1080
+      height = 1080
+    }
 
     // 2. Package into Version 1 PipelineIR
     const ir: PipelineIR = {
@@ -27,18 +46,24 @@ export class RenderHandler extends BaseHandler {
       metadata: {
         projectId: context.project.id,
         jobId: context.job.id,
-        topic: context.project.topic
+        topic: context.project.topic,
+        canvasConfig: {
+          width,
+          height,
+          aspectRatio,
+          fps: 30
+        }
       },
       voice: {
-        wordTimings: state.voice.subtitles,
-        audioUrl: state.voice.audioUrl
+        wordTimings,
+        audioUrl
       },
-      scenes: state.scenes.map((s: any) => ({
-        id: s.id,
-        text: s.text,
-        visual_type: s.visual_type,
-        action: s.action,
-        transition: s.transition,
+      scenes: scenes.map((s: any) => ({
+        id: String(s.sequence_number || s.id || 1),
+        text: s.scriptSegment || s.text || '',
+        visual_type: s.visualType || s.visual_type || 'stickman_action',
+        action: s.animationAction || s.action || 'standing',
+        transition: s.transition || 'fade',
         assetUrl: s.assetUrl
       }))
     }

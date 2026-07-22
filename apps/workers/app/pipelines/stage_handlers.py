@@ -11,7 +11,10 @@ from app.agents.subtitle_agent import SubtitleAgent, SubtitleOutput
 from app.models.whisper import WhisperModelWrapper
 from app.core.lifecycle import LifecycleService, CancellationError, PauseError
 
+from app.repositories.artifact_repository import ArtifactRepository
+
 logger = structlog.get_logger(__name__)
+artifact_repo = ArtifactRepository()
 
 
 async def handle_research_stage(job_id: str, topic: str, language: str = "en") -> dict:
@@ -23,13 +26,20 @@ async def handle_research_stage(job_id: str, topic: str, language: str = "en") -
 
     output: ResearchOutput = await agent.run(topic, language)
     
-    return {
+    result = {
         "researchSources": [
             {"title": s.title, "url": s.url, "excerpt": s.excerpt}
             for s in output.sources
         ],
         "researchSummary": output.summary,
     }
+    
+    try:
+        artifact_repo.save_stage_artifact(job_id, "01_research", result)
+    except Exception as e:
+        logger.warning("failed_to_persist_research_artifact", error=str(e))
+
+    return result
 
 
 async def handle_outline_stage(
@@ -56,7 +66,7 @@ async def handle_outline_stage(
         duration_target_minutes=duration_target_minutes,
     )
 
-    return {
+    result = {
         "outline": [
             {
                 "index": p.index,
@@ -66,6 +76,13 @@ async def handle_outline_stage(
             for p in output.points
         ]
     }
+
+    try:
+        artifact_repo.save_stage_artifact(job_id, "02_outline", result)
+    except Exception as e:
+        logger.warning("failed_to_persist_outline_artifact", error=str(e))
+
+    return result
 
 
 async def handle_script_direction_stage(
@@ -107,7 +124,7 @@ async def handle_script_direction_stage(
         duration_target_minutes=duration_target_minutes,
     )
 
-    return {
+    result = {
         "sceneDirections": [
             {
                 "sequence_number": s.sequence_number,
@@ -125,6 +142,13 @@ async def handle_script_direction_stage(
         ]
     }
 
+    try:
+        artifact_repo.save_stage_artifact(job_id, "03_script", result)
+    except Exception as e:
+        logger.warning("failed_to_persist_script_artifact", error=str(e))
+
+    return result
+
 
 async def handle_voiceover_stage(
     job_id: str,
@@ -138,7 +162,7 @@ async def handle_voiceover_stage(
     
     outputs: list[VoiceoverOutput] = await agent.run(scenes, voice_id)
     
-    return {
+    result = {
         "voiceovers": [
             {
                 "sequence_number": o.scene_number,
@@ -150,6 +174,13 @@ async def handle_voiceover_stage(
         ]
     }
 
+    try:
+        artifact_repo.save_stage_artifact(job_id, "04_voice", result)
+    except Exception as e:
+        logger.warning("failed_to_persist_voice_artifact", error=str(e))
+
+    return result
+
 
 async def handle_subtitle_extraction_stage(
     job_id: str,
@@ -159,9 +190,7 @@ async def handle_subtitle_extraction_stage(
     LifecycleService.throw_if_cancelled(job_id)
     logger.info("subtitle_extraction_stub", num_scenes=len(scene_voiceovers))
     
-    # MVP stub: return empty word timings for each scene.
-    # Full Whisper transcription will be enabled once the rendering pipeline is validated.
-    return {
+    result = {
         "subtitles": [
             {
                 "sequence_number": sv.get("sequence_number", i),
@@ -170,3 +199,10 @@ async def handle_subtitle_extraction_stage(
             for i, sv in enumerate(scene_voiceovers)
         ]
     }
+
+    try:
+        artifact_repo.save_stage_artifact(job_id, "05_subtitles", result)
+    except Exception as e:
+        logger.warning("failed_to_persist_subtitle_artifact", error=str(e))
+
+    return result

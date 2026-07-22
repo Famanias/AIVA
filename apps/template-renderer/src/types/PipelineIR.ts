@@ -9,6 +9,12 @@ export interface PipelineIR {
     projectId: string
     jobId: string
     topic: string
+    canvasConfig?: {
+      width?: number
+      height?: number
+      fps?: number
+      aspectRatio?: string
+    }
   }
   voice: {
     wordTimings: Array<{

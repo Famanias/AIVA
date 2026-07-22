@@ -15,6 +15,9 @@ class EncodingProfile(BaseModel):
     bitrate: str = "8M"
     preset: str = "fast"
     resolution: str = "1080x1920"
+    width: int = 1080
+    height: int = 1920
+    aspect_ratio: str = "9:16"
     fps: int = 30
 
 class CompositionModel(BaseModel):

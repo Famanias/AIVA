@@ -1,0 +1,228 @@
+{
+  "schema_version": "1.0.0",
+  "pipeline_version": "0.2.0",
+  "revision": 1,
+  "project_id": "11111111-1111-1111-1111-111111111111",
+  "title": "The Epic Story of Homer's Odyssey",
+  "topic": "The Story of Homer's Odyssey",
+  "video_style": "stickman_animation",
+  "generation_profile": {
+    "target_aspect_ratio": "9:16",
+    "target_duration_range": [
+      30,
+      60
+    ],
+    "pacing": "high_retention"
+  },
+  "provenance": {
+    "llm_provider": "openrouter",
+    "llm_model": "meta-llama/llama-3.3-70b-instruct",
+    "tts_provider": "edge_tts",
+    "tts_voice": "en-US-AriaNeural",
+    "search_provider": "tavily"
+  },
+  "artifacts": {
+    "01_research": {
+      "researchSummary": "Odysseus, king of Ithaca, embarks on a tumultuous ten-year journey home after the Trojan War. Facing mythical creatures such as the Cyclops Polyphemus, the enchantress Circe, and the sirens, Odysseus relies on his cunning and intellect to survive while his wife Penelope keeps suitors at bay.",
+      "researchSources": [
+        {
+          "title": "Homer's Odyssey Overview",
+          "url": "https://en.wikipedia.org/wiki/Odyssey",
+          "excerpt": "The Odyssey is one of two major ancient Greek epic poems attributed to Homer."
+        }
+      ]
+    },
+    "02_outline": {
+      "outline": [
+        {
+          "index": 1,
+          "heading": "The Fall of Troy and the Cyclops",
+          "keyPoints": [
+            "Departure from Troy",
+            "Trapped in Polyphemus' cave",
+            "Blinding the Cyclops and escaping"
+          ]
+        },
+        {
+          "index": 2,
+          "heading": "Trials of Circe and the Sirens",
+          "keyPoints": [
+            "Turning men into swine on Aeaea",
+            "Resisting the fatal song of the Sirens",
+            "Navigating Scylla and Charybdis"
+          ]
+        },
+        {
+          "index": 3,
+          "heading": "Return to Ithaca and Reclaiming the Throne",
+          "keyPoints": [
+            "Disguised as a beggar",
+            "The archery trial of Odysseus' bow",
+            "Slaying the suitors and reunion with Penelope"
+          ]
+        }
+      ]
+    },
+    "03_script": {
+      "sceneDirections": [
+        {
+          "sequence_number": 1,
+          "scriptSegment": "After ten long years of war at Troy, Odysseus set sail for his island home of Ithaca.",
+          "visualType": "stickman_action",
+          "animationAction": "sailing_ship",
+          "cameraStyle": "pan_right",
+          "typographyTemplate": "bold_title",
+          "transition": "fade",
+          "emotionalTone": "epic",
+          "brollSearchKeywords": [
+            "ancient Greek ship",
+            "mediterranean sea"
+          ],
+          "visualPrompt": "A wooden ancient Greek sailing ship navigating stormy sea waves"
+        },
+        {
+          "sequence_number": 2,
+          "scriptSegment": "Trapped in the lair of the giant Cyclops Polyphemus, Odysseus devised a cunning escape.",
+          "visualType": "stickman_action",
+          "animationAction": "thinking_gesture",
+          "cameraStyle": "zoom_in",
+          "typographyTemplate": "lower_third",
+          "transition": "cut",
+          "emotionalTone": "suspenseful",
+          "brollSearchKeywords": [
+            "dark cave giant",
+            "greece rocks"
+          ],
+          "visualPrompt": "A shadowy stone cave interior with torch light"
+        },
+        {
+          "sequence_number": 3,
+          "scriptSegment": "By blinding the monster and clinging to the bellies of sheep, he led his men to freedom.",
+          "visualType": "stickman_action",
+          "animationAction": "running_escape",
+          "cameraStyle": "tracking_shot",
+          "typographyTemplate": "accent_caption",
+          "transition": "fade",
+          "emotionalTone": "triumphant",
+          "brollSearchKeywords": [
+            "flock of sheep",
+            "ancient greece coast"
+          ],
+          "visualPrompt": "Flock of sheep running out of a cave toward sunny coastal cliffs"
+        }
+      ]
+    },
+    "04_voice": {
+      "audioUrl": "D:/repos/AIVA/storage/tmp/odyssey_full_narration.mp3",
+      "voiceovers": [
+        {
+          "sequence_number": 1,
+          "audio_url": "D:/repos/AIVA/storage/tmp/odyssey_scene_1.mp3",
+          "duration_sec": 4.5,
+          "word_timings": [
+            {
+              "word": "After",
+              "start": 0.0,
+              "end": 0.3
+            },
+            {
+              "word": "ten",
+              "start": 0.3,
+              "end": 0.6
+            },
+            {
+              "word": "long",
+              "start": 0.6,
+              "end": 0.9
+            },
+            {
+              "word": "years",
+              "start": 0.9,
+              "end": 1.2
+            }
+          ]
+        },
+        {
+          "sequence_number": 2,
+          "audio_url": "D:/repos/AIVA/storage/tmp/odyssey_scene_2.mp3",
+          "duration_sec": 5.1,
+          "word_timings": [
+            {
+              "word": "Trapped",
+              "start": 0.0,
+              "end": 0.4
+            },
+            {
+              "word": "in",
+              "start": 0.4,
+              "end": 0.6
+            },
+            {
+              "word": "the",
+              "start": 0.6,
+              "end": 0.8
+            }
+          ]
+        },
+        {
+          "sequence_number": 3,
+          "audio_url": "D:/repos/AIVA/storage/tmp/odyssey_scene_3.mp3",
+          "duration_sec": 4.8,
+          "word_timings": [
+            {
+              "word": "By",
+              "start": 0.0,
+              "end": 0.3
+            },
+            {
+              "word": "blinding",
+              "start": 0.3,
+              "end": 0.7
+            }
+          ]
+        }
+      ]
+    },
+    "05_subtitles": {
+      "subtitles": [
+        {
+          "sequence_number": 1,
+          "word_timings": []
+        },
+        {
+          "sequence_number": 2,
+          "word_timings": []
+        },
+        {
+          "sequence_number": 3,
+          "word_timings": []
+        }
+      ]
+    },
+    "06_assets": {
+      "background_tracks": [
+        {
+          "id": "scene_1_bg",
+          "storage_key": "D:/repos/AIVA/storage/tmp/odyssey_bg_1.jpg",
+          "duration": 4.5,
+          "type": "image",
+          "mime_type": "image/jpeg"
+        },
+        {
+          "id": "scene_2_bg",
+          "storage_key": "D:/repos/AIVA/storage/tmp/odyssey_bg_2.jpg",
+          "duration": 5.1,
+          "type": "image",
+          "mime_type": "image/jpeg"
+        },
+        {
+          "id": "scene_3_bg",
+          "storage_key": "D:/repos/AIVA/storage/tmp/odyssey_bg_3.jpg",
+          "duration": 4.8,
+          "type": "image",
+          "mime_type": "image/jpeg"
+        }
+      ]
+    }
+  }
+}

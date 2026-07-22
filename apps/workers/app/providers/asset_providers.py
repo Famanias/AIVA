@@ -84,8 +84,8 @@ class SDXLProvider(IAssetProvider):
                 raw_metadata={
                     "prompt": prompt,
                     "mime_type": "image/jpeg",
-                    # Simulated output for MVP without API key setup
-                    "url": "https://via.placeholder.com/1080x1920.jpeg?text=SDXL+Generated"
+                    # Static fallback for SDXL without API key setup
+                    "url": "https://picsum.photos/1080/1920"
                 }
             )
         ]

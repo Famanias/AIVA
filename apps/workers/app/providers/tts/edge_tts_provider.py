@@ -43,14 +43,19 @@ class EdgeTTSProvider(ITTSProvider):
         # Collect word boundaries for approximate timing
         word_boundaries: list[dict] = []
 
-        communicate = edge_tts.Communicate(text, voice)
-        async with communicate as comm:
-            async for chunk in comm.stream():
+        import traceback
+        try:
+            communicate = edge_tts.Communicate(text, voice)
+            async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     with open(audio_path, "ab") as f:
                         f.write(chunk["data"])
                 elif chunk["type"] == "WordBoundary":
                     word_boundaries.append(chunk)
+        except Exception as e:
+            logger.exception("edge_tts_failed", exc_info=e)
+            traceback.print_exc()
+            raise e
 
         # Convert word boundaries to WordTiming objects
         timings = [
@@ -62,7 +67,26 @@ class EdgeTTSProvider(ITTSProvider):
             for wb in word_boundaries
         ]
 
-        duration = timings[-1].end if timings else 0.0
+        if timings:
+            duration = timings[-1].end
+        else:
+            # Fallback duration measurement from MP3 file size (~128kbps = 16000 bytes/sec)
+            file_size = os.path.getsize(audio_path)
+            duration = max(1.0, round(file_size / 16000.0, 2))
+            
+            # Generate estimated word timings from text for subtitle extraction stage
+            words = text.split()
+            if words:
+                time_per_word = duration / len(words)
+                timings = [
+                    WordTiming(
+                        word=w,
+                        start=round(i * time_per_word, 2),
+                        end=round((i + 1) * time_per_word, 2)
+                    )
+                    for i, w in enumerate(words)
+                ]
+
         logger.info("edge_tts_complete", duration_sec=duration, word_count=len(timings))
         
         if context:

@@ -21,8 +21,8 @@ async def resolve_scene(scene: Dict[str, Any], config: AssetConfig) -> Dict[str,
         print(f"[AssetRouter] Skipping scene {scene.get('id')} - already has manifest.")
         return scene
 
-    scene_text = scene.get("text", "")
-    query = scene.get("assetQuery", scene_text)
+    scene_text = scene.get("text") or scene.get("scriptSegment", "")
+    query = scene.get("assetQuery") or scene.get("visualPrompt") or scene_text
 
     # 2. Strategy Execution
     candidate = await asset_strategy.resolve_for_scene(scene_text, query, config)

@@ -51,8 +51,22 @@ class Encoder:
 
         cmd = [ffmpeg_bin, "-y"]
         
-        for inp in inputs:
+        for bg in model.background_tracks:
+            inp = bg.storage_key
+            is_image = bg.type == "image" or any(inp.lower().endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".webp"]) or "picsum.photos" in inp.lower()
+            if is_image:
+                dur = str(bg.duration or 4.5)
+                cmd.extend(["-loop", "1", "-t", dur])
             cmd.extend(["-i", inp])
+
+        if model.overlay_track:
+            cmd.extend(["-i", model.overlay_track.storage_key])
+
+        if model.voice_track:
+            cmd.extend(["-i", model.voice_track.storage_key])
+            
+        if model.music_track:
+            cmd.extend(["-i", model.music_track.storage_key])
             
         if filter_complex:
             cmd.extend(["-filter_complex", filter_complex])

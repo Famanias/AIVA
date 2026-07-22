@@ -58,6 +58,13 @@ if the command failed, try this:
 ```bash
 npx supabase start -x studio
 ```
+
+if it says supabase start already running and throws an error, try this:
+```bash
+npx supabase stop
+npx supabase start -x studio
+```
+
 ### Option B: Cloud Supabase
 If using a managed project at app.supabase.com:
 1. Link your project: `npx supabase link --project-ref your-project-ref`
@@ -127,3 +134,4 @@ To verify that the end-to-end pipeline orchestration is working correctly (witho
 pnpm certify
 ```
 This runs the orchestration logic with mocked API providers and confirms that the jobs pass through the queue successfully.
+

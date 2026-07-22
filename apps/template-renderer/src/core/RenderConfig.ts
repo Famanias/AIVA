@@ -18,7 +18,7 @@ export const DEFAULT_RENDER_CONFIG: RenderConfig = {
   width: 1080,
   height: 1920,
   fps: 30,
-  maxConcurrency: parseInt(process.env.MAX_CONCURRENCY || '4', 10),
+  maxConcurrency: parseInt(process.env.CHROMIUM_POOL_SIZE || process.env.MAX_CONCURRENCY || '1', 10),
   codec: 'h264',
   pixelFormat: 'yuv420p',
   audioCodec: 'aac',
