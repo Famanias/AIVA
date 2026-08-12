@@ -20,6 +20,27 @@
 services:
 
   # ---------------------------------------------------------------------------
+  # PostgreSQL — Primary local relational database with pgvector
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aiva-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: aiva
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d aiva"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
   # Redis — Queue and cache backing store
   # ---------------------------------------------------------------------------
   redis:
@@ -49,6 +70,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "8000:8000"
     env_file:
@@ -56,10 +79,13 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=aiva
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     volumes:
-      # Shared storage for in-flight render artifacts
-      - render_tmp:/app/storage/tmp
-      # Model weight cache — avoids re-downloading on restart
+      - ../storage:/app/storage
       - model_cache:/app/models
     deploy:
       resources:
@@ -68,8 +94,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # GPU reservation is optional — remove the 'deploy' section if no GPU available.
-    # The workers fall back to CPU-based inference automatically.
 
   # ---------------------------------------------------------------------------
   # Template Renderer — Node.js Remotion + Puppeteer
@@ -83,6 +107,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "3001:3001"
     env_file:
@@ -90,9 +116,13 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=aiva
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
     volumes:
-      - render_tmp:/app/output
-    # Chromium is pre-baked into the image; no additional browser install needed.
+      - ../storage:/app/storage
 
   # ---------------------------------------------------------------------------
   # Web Application — Next.js 16 frontend + API layer
@@ -106,6 +136,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      postgres:
+        condition: service_healthy
     ports:
       - "3000:3000"
     env_file:
@@ -113,10 +145,18 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=aiva
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
       - WORKER_API_URL=http://workers:8000
       - TEMPLATE_RENDERER_URL=http://template-renderer:3001
+    volumes:
+      - ../storage:/app/storage
 
 volumes:
+  postgres_data:
   redis_data:
-  render_tmp:
   model_cache:
+

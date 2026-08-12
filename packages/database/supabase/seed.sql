@@ -102,7 +102,7 @@ INSERT INTO animation_rigs (
     }
   }'::jsonb,
   1
-);
+) ON CONFLICT (id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
 -- System Video Style Preset: Stickman Animation
@@ -128,7 +128,7 @@ INSERT INTO video_style_presets (
   'medium',
   'fade',
   TRUE
-);
+) ON CONFLICT (id) DO NOTHING;
 
 -- -----------------------------------------------------------------------------
 -- System Video Style Preset: Documentary
@@ -154,4 +154,5 @@ INSERT INTO video_style_presets (
   'slow',
   'fade',
   TRUE
-);
+) ON CONFLICT (id) DO NOTHING;
+

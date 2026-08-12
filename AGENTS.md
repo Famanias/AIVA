@@ -444,3 +444,15 @@ Do not update documentation unnecessarily.
 Keep documentation concise and synchronized with the implementation.
 
 If a document becomes outdated, recommend the required updates before completing the task.
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues using `gh` CLI for `Famanias/AIVA`. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context layout using root `CONTEXT.md` and `ADR.md`/`docs/adr/`. See `docs/agents/domain.md`.

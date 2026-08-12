@@ -2,5 +2,16 @@
   "name": "@aiva/database",
   "version": "0.1.0",
   "private": true,
-  "description": "Supabase schema definitions, migrations, and seed data for AIVA."
+  "description": "PostgreSQL schema, direct pg client, and migrations for AIVA.",
+  "main": "src/index.ts",
+  "scripts": {
+    "migrate": "tsx src/migrate.ts",
+    "test": "tsx src/test-phase1.ts"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.21.0"
+  }
 }
