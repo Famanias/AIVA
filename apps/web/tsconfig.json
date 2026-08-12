@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*"],
+      "@aiva/database": ["../../packages/database/src/index.ts"],
+      "@aiva/database/*": ["../../packages/database/src/*"]
     }
   },
   "include": [

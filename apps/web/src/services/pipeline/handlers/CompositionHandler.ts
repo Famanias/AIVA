@@ -17,9 +17,10 @@ export class CompositionHandler extends BaseHandler {
 
     await context.logger.info('Dispatching PipelineState to FFmpeg Composition Engine...')
 
-    const scenes = state.scenes || state.sceneDirections || state.script?.sceneDirections || state['03_script']?.sceneDirections || []
-    const voice = state.voice || state['04_voice'] || {}
-    const assets = state.assets || state['06_assets'] || {}
+    const stateAny = state as Record<string, any>
+    const scenes = state.scenes || state.sceneDirections || state.script?.sceneDirections || stateAny['03_script']?.sceneDirections || []
+    const voice = state.voice || stateAny['04_voice'] || {}
+    const assets = state.assets || stateAny['06_assets'] || {}
 
     const rawBgTracks = assets.background_tracks || (Array.isArray(scenes) ? scenes
       .filter((s: any) => s.asset_manifest?.background?.storage_key)
@@ -38,7 +39,7 @@ export class CompositionHandler extends BaseHandler {
 
     const voiceUrl = voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || null
 
-    const profile = context.project?.generation_profile || {}
+    const profile = (context.project as any)?.generation_profile || {}
     const aspectRatio = profile.target_aspect_ratio || '9:16'
     let width = 1080
     let height = 1920

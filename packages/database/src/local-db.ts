@@ -1,4 +1,4 @@
-import { Pool, QueryResult } from "pg";
+import { Pool, QueryResult, QueryResultRow } from "pg";
 import { encryptSecret, decryptSecret } from "./crypto";
 
 let poolInstance: Pool | null = null;
@@ -28,7 +28,7 @@ export function getPool(): Pool {
   return poolInstance;
 }
 
-export async function query<T = any>(
+export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {

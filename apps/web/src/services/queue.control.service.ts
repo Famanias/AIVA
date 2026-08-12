@@ -34,8 +34,9 @@ export class QueueControlService {
 
     const bullMqJobId = `${jobId}_${job.current_step}`
     const jobState = await queueManager.getJobState(bullMqJobId)
-    const isPaused = project.status === 'paused'
-    const isCancelling = project.status === 'cancelling'
+    const statusStr = (project.status as string) || ''
+    const isPaused = statusStr === 'paused'
+    const isCancelling = statusStr === 'cancelling'
     const isQueuedInBull = jobState && (jobState.status === 'waiting' || jobState.status === 'delayed')
 
     // Mark as cancelled or cancelling depending on queue state and project state
@@ -52,9 +53,9 @@ export class QueueControlService {
         .eq('id', projectId)
 
       // 3. Set cancel timestamp and reason, leave current_step untouched
-      await this.adminSupabase
+      await (this.adminSupabase
         .from('jobs')
-        .update({ 
+        .update as any)({ 
           cancel_requested_at: new Date().toISOString(),
           cancel_requested_by: userId,
           cancelled_at: new Date().toISOString(),
@@ -73,13 +74,13 @@ export class QueueControlService {
       // Mark project as cancelling immediately so UI updates
       await this.adminSupabase
         .from('projects')
-        .update({ status: 'cancelling' })
+        .update({ status: 'cancelling' as any })
         .eq('id', projectId)
 
       // We set the cancellation requested flag. The worker will pick this up cooperatively.
-      await this.adminSupabase
+      await (this.adminSupabase
         .from('jobs')
-        .update({ 
+        .update as any)({ 
           cancel_requested_at: new Date().toISOString(),
           cancel_requested_by: userId,
           cancel_reason: 'User requested cancellation'
@@ -113,9 +114,9 @@ export class QueueControlService {
         .update({ status: 'paused' })
         .eq('id', projectId)
 
-      await this.adminSupabase
+      await (this.adminSupabase
         .from('jobs')
-        .update({ 
+        .update as any)({ 
           pause_requested_at: new Date().toISOString(),
           pause_requested_by: userId
         })
@@ -128,12 +129,12 @@ export class QueueControlService {
     } else {
       await this.adminSupabase
         .from('projects')
-        .update({ status: 'paused' })
+        .update({ status: 'paused' as any })
         .eq('id', projectId)
 
-      await this.adminSupabase
+      await (this.adminSupabase
         .from('jobs')
-        .update({ 
+        .update as any)({ 
           pause_requested_at: new Date().toISOString(),
           pause_requested_by: userId
         })
@@ -152,9 +153,9 @@ export class QueueControlService {
         .update({ status: 'queued' })
         .eq('id', projectId)
 
-    await this.adminSupabase
+    await (this.adminSupabase
       .from('jobs')
-      .update({ 
+      .update as any)({ 
         pause_requested_at: null,
         pause_requested_by: null
       })

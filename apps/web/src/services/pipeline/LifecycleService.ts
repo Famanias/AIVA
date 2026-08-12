@@ -38,8 +38,9 @@ export class LifecycleService {
       .eq('id', jobId)
       .single()
 
-    const isCancelled = !error && data && data.cancel_requested_at !== null
-    const isPaused = !error && data && data.pause_requested_at !== null
+    const jobData = data as any
+    const isCancelled = !error && jobData && jobData.cancel_requested_at != null
+    const isPaused = !error && jobData && jobData.pause_requested_at != null
 
     this.cache.set(jobId, { isCancelled, isPaused, expiresAt: now + this.CACHE_TTL_MS })
     

@@ -7,7 +7,7 @@ export interface IQueueManager {
   /**
    * Enqueues a job for processing.
    */
-  enqueueJob(jobId: string, priority?: number): Promise<void>
+  enqueueJob(jobId: string, step?: string | number, priority?: number): Promise<void>
 
   /**
    * Gets the state of a specific job in the queue.

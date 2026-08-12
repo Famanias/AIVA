@@ -78,6 +78,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@aiva/database':
+        specifier: workspace:*
+        version: link:../../packages/database
       '@aiva/shared-types':
         specifier: workspace:^
         version: link:../../packages/shared-types

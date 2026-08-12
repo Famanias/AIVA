@@ -148,3 +148,115 @@ pnpm --filter @aiva/database test
 ### Known Limitations or Issues
 - Full UI settings management page is scheduled for **Phase 2** (Frontend & API Layer).
 - Python worker direct `asyncpg` integration is scheduled for **Phase 3** (Backend & Python Workers).
+
+---
+
+## Phase 2: Frontend & API Layer (`apps/web`)
+
+### What Was Implemented
+1. **Local Self-Hosted Single-User Proxy (`apps/web/proxy.ts`)**:
+   - Injected default local user & workspace session headers (`x-user-id`, `x-workspace-id`) into all requests, bypassing cloud Supabase auth in local mode.
+
+2. **Static Media Streaming API (`apps/web/src/app/api/v1/storage/[...path]/route.ts`)**:
+   - Built media streaming route serving assets from `./storage/projects/...` with HTTP range request support (`206 Partial Content`) for video and audio playback.
+   - Enforced path traversal security checks preventing access outside `./storage`.
+
+3. **In-App Provider & Key Settings API (`apps/web/src/app/api/v1/settings/route.ts`)**:
+   - GET/POST endpoint handlers reading and persisting encrypted API credentials and provider settings in the local PostgreSQL `app_settings` table via `@aiva/database`.
+
+4. **Local Ollama Connectivity Test Endpoint (`apps/web/src/app/api/v1/settings/test-ollama/route.ts`)**:
+   - Endpoint testing local Ollama connection (`http://localhost:11434/api/tags`) and returning installed model tags.
+
+5. **Settings Management UI Page (`apps/web/src/app/(dashboard)/settings/page.tsx`)**:
+   - Responsive Settings UI allowing users to select stage providers (LLM, TTS, Image, B-Roll), enter AES-256 encrypted cloud API keys, and perform live connection tests against local Ollama models.
+
+6. **Timeline Studio UI Page (`apps/web/src/app/(dashboard)/projects/[id]/timeline/page.tsx`)**:
+   - Interactive scene timeline view with script segment preview, visual type tags, duration badges, and scene re-render controls.
+
+7. **Single-Scene Partial Re-Render Endpoint (`apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts`)**:
+   - Endpoint marking targeted scene render status as `queued` for partial single-scene re-rendering.
+
+---
+
+### Files & Components Changed
+- `[MODIFY]` [`apps/web/proxy.ts`](file:///d:/repos/AIVA/apps/web/proxy.ts) — Updated Next.js 16 proxy for local single-user session injection.
+- `[NEW]` [`apps/web/src/app/api/v1/storage/[...path]/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/storage/%5B...path%5D/route.ts) — Local storage media streaming API route with range request support.
+- `[NEW]` [`apps/web/src/app/api/v1/settings/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/settings/route.ts) — Encrypted settings GET/POST API route.
+- `[NEW]` [`apps/web/src/app/api/v1/settings/test-ollama/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/settings/test-ollama/route.ts) — Ollama connectivity check endpoint.
+- `[NEW]` [`apps/web/src/app/(dashboard)/settings/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/settings/page.tsx) — System & Provider Settings UI page.
+- `[NEW]` [`apps/web/src/app/(dashboard)/projects/[id]/timeline/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/projects/%5Bid%5D/timeline/page.tsx) — Timeline Studio page.
+- `[NEW]` [`apps/web/src/app/api/v1/projects/[id]/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/%5Bid%5D/route.ts) — Project details & scene fetching endpoint.
+- `[NEW]` [`apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/%5Bid%5D/scenes/%5Bscene_id%5D/rerender/route.ts) — Single-scene re-render endpoint.
+- `[NEW]` [`apps/web/src/test-phase2.ts`](file:///d:/repos/AIVA/apps/web/src/test-phase2.ts) — Phase 2 automated unit test suite.
+- `[MODIFY]` [`apps/web/package.json`](file:///d:/repos/AIVA/apps/web/package.json) — Added `@aiva/database` workspace dependency and `test` script.
+- `[MODIFY]` [`apps/web/tsconfig.json`](file:///d:/repos/AIVA/apps/web/tsconfig.json) — Added `@aiva/database` path mapping.
+
+---
+
+### Automated Verification Performed
+
+1. **Ran Phase 2 API Unit Tests**:
+   ```bash
+   pnpm --filter web test
+   ```
+   **Results:**
+   - ✅ GET `/api/v1/settings` returned success status & settings payload.
+   - ✅ POST `/api/v1/settings` updated local `app_settings` in PostgreSQL.
+   - ✅ POST `/api/v1/settings/test-ollama` returned local model connectivity status.
+   - ✅ Storage path traversal check blocked unauthorized file access (`403 Forbidden`).
+
+2. **Ran Production Build & Type Check**:
+   ```bash
+   pnpm --filter web build
+   ```
+   **Results:**
+   - ✅ Compiled Next.js web application with 0 errors. All API routes and dashboard pages generated cleanly.
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 2 on your machine, follow these exact steps:
+
+#### Step 1: Start Database Stack & Run Web App in Dev Mode
+Make sure your PostgreSQL container is running (`docker-compose -f infra/docker-compose.yml up postgres redis -d`), then start the Next.js web app:
+```powershell
+pnpm --filter web dev
+```
+Open your browser and navigate to `http://localhost:3000/settings`.
+
+#### Step 2: Test & Save Settings Page Credentials
+1. On `http://localhost:3000/settings`, select your active providers (e.g. LLM: Google Gemini, TTS: EdgeTTS).
+2. Enter API keys into the Cloud API Keys section (e.g. `AIzaSy...`).
+3. Click **Save Settings**.
+4. Check the database to confirm values were saved and encrypted:
+```powershell
+docker exec -it aiva-postgres psql -U postgres -d aiva -c "SELECT key, value, is_encrypted FROM public.app_settings WHERE key = 'gemini_api_key';"
+```
+**Expected Result:** The `value` field is encrypted with AES-256 (format: `<iv>:<auth_tag>:<ciphertext>`) and `is_encrypted` is `true`.
+
+#### Step 3: Test Ollama Local Model Connection
+1. In the Local AI Models section of `http://localhost:3000/settings`, keep `http://localhost:11434`.
+2. Click **Test Connection**.
+**Expected Result:** If Ollama is running, a green alert appears displaying your installed Ollama models. If Ollama is not running, an informative warning badge informs you to start Ollama locally.
+
+#### Step 4: Test Media Storage Range Streaming API
+Create a test file inside `./storage`:
+```powershell
+New-Item -ItemType Directory -Force -Path "storage/projects/test-proj"
+Set-Content -Path "storage/projects/test-proj/hello.json" -Value '{"message": "local storage stream working"}'
+```
+In your browser, visit `http://localhost:3000/api/v1/storage/projects/test-proj/hello.json`.
+**Expected Result:** The JSON file contents are rendered with status `200 OK`.
+
+#### Step 5: Test Single-Scene Re-render API
+In PowerShell, trigger a scene re-render endpoint test:
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/api/v1/projects/00000000-0000-0000-0000-000000000000/scenes/00000000-0000-0000-0000-000000000001/rerender" -Method POST
+```
+**Expected Result:** Returns `{"status":"success","message":"Scene 00000000-0000-0000-0000-000000000001 queued for partial re-rendering", ...}`.
+
+---
+
+### Known Limitations or Issues
+- Python worker pipeline execution will connect in **Phase 3** (Backend & Python Workers).

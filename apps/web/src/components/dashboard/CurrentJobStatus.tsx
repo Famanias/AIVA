@@ -28,10 +28,11 @@ export function CurrentJobStatus() {
 
   const lastErrorEvent = [...events].reverse().find(e => e.job_step === job.current_step && e.event_type === 'failed')
   const isFailed = telemetry.project?.status === 'failed' || !!lastErrorEvent
-  const isCompleted = telemetry.project?.status === 'completed'
-  const isPaused = telemetry.project?.status === 'paused'
-  const isCancelling = telemetry.project?.status === 'cancelling'
-  const isCancelled = telemetry.project?.status === 'cancelled'
+  const statusStr = (telemetry.project?.status as string) || ''
+  const isCompleted = statusStr === 'completed'
+  const isPaused = statusStr === 'paused'
+  const isCancelling = statusStr === 'cancelling'
+  const isCancelled = statusStr === 'cancelled'
 
   // Estimate cost based on progress (dummy logic for MVP)
   const estimatedCost = `$${((job.progress / 100) * 0.15).toFixed(3)}`
