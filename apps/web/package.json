@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx src/test-phase2.ts"
+    "test": "tsx src/test-phase2.ts",
+    "test:e2e": "tsx src/test-phase4.ts"
   },
   "dependencies": {
     "@aiva/database": "workspace:*",
