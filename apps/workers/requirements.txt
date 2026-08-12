@@ -40,6 +40,7 @@ boto3==1.35.0  # S3-compatible storage fallback
 
 # Database
 asyncpg==0.29.0
+cryptography>=42.0.0
 
 # Redis (for cache reads — queue management stays in Node.js/BullMQ)
 redis==5.1.0

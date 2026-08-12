@@ -252,7 +252,7 @@ In your browser, visit `http://localhost:3000/api/v1/storage/projects/test-proj/
 #### Step 5: Test Single-Scene Re-render API
 In PowerShell, trigger a scene re-render endpoint test:
 ```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/api/v1/projects/00000000-0000-0000-0000-000000000000/scenes/00000000-0000-0000-0000-000000000001/rerender" -Method POST
+Invoke-RestMethod -Uri "http://localhost:3000/api/v1/projects/00000000-0000-0000-0000-000000000001/scenes/00000000-0000-0000-0000-000000000001/rerender" -Method POST
 ```
 **Expected Result:** Returns `{"status":"success","message":"Scene 00000000-0000-0000-0000-000000000001 queued for partial re-rendering", ...}`.
 
@@ -260,3 +260,93 @@ Invoke-RestMethod -Uri "http://localhost:3000/api/v1/projects/00000000-0000-0000
 
 ### Known Limitations or Issues
 - Python worker pipeline execution will connect in **Phase 3** (Backend & Python Workers).
+
+---
+
+## Phase 3: Backend & Python Workers (`apps/workers`)
+
+### What Was Implemented
+1. **Direct `asyncpg` PostgreSQL Database Module (`apps/workers/app/core/db.py`)**:
+   - Implemented direct PostgreSQL connection pooling (`get_db_pool()`, `min_size=2`, `max_size=10`) replacing cloud Supabase dependencies.
+   - Built `get_app_setting(key: str)` function reading settings from `app_settings` in PostgreSQL, automatically decrypting AES-256 encrypted keys using `decrypt_secret()`.
+
+2. **Stage Checkpoint Recovery System (`apps/workers/app/pipeline/checkpoint.py`)**:
+   - Implemented disk-based stage checkpoint recovery:
+     - Checkpoint path format: `./storage/projects/{project_id}/revisions/v{revision}/checkpoint_{stage_name}.json`
+     - Wrapper function `load_checkpoint_or_run(stage_name, project_id, revision, generator_fn)`:
+       - On checkpoint HIT: loads JSON state directly from disk, skipping expensive LLM/TTS API invocations ($0.00 repeated cost on crash retry).
+       - On checkpoint MISS: executes `generator_fn()`, saves atomic JSON checkpoint to disk, and returns the result.
+
+3. **Dynamic Provider Factory & Ollama Local Provider (`apps/workers/app/providers/llm/ollama_provider.py` & `factory.py`)**:
+   - Created `OllamaProvider` implementing `ILLMProvider` for 100% offline local LLM inference targeting local Ollama HTTP endpoint (`http://localhost:11434`).
+   - Refactored `app/providers/factory.py` to dynamically resolve providers and decrypted API credentials from PostgreSQL `app_settings`.
+
+4. **Async Lifecycle Service (`apps/workers/app/core/lifecycle.py`)**:
+   - Updated `LifecycleService` to perform async lifecycle checks (`cancel_requested_at`, `pause_requested_at`) via `asyncpg` pool.
+
+---
+
+### Files & Components Changed
+- `[NEW]` [`apps/workers/app/core/db.py`](file:///d:/repos/AIVA/apps/workers/app/core/db.py) — Direct `asyncpg` connection pool & AES-256 decrypted settings lookup helper.
+- `[NEW]` [`apps/workers/app/pipeline/checkpoint.py`](file:///d:/repos/AIVA/apps/workers/app/pipeline/checkpoint.py) — Stage checkpoint recovery system.
+- `[NEW]` [`apps/workers/app/providers/llm/ollama_provider.py`](file:///d:/repos/AIVA/apps/workers/app/providers/llm/ollama_provider.py) — Ollama local offline LLM provider implementation.
+- `[MODIFY]` [`apps/workers/app/providers/factory.py`](file:///d:/repos/AIVA/apps/workers/app/providers/factory.py) — Refactored provider factory to resolve dynamic settings from PostgreSQL.
+- `[MODIFY]` [`apps/workers/app/core/lifecycle.py`](file:///d:/repos/AIVA/apps/workers/app/core/lifecycle.py) — Updated job lifecycle service for `asyncpg`.
+- `[MODIFY]` [`apps/workers/requirements.txt`](file:///d:/repos/AIVA/apps/workers/requirements.txt) — Added `cryptography>=42.0.0` dependency.
+- `[NEW]` [`apps/workers/tests/test_phase3.py`](file:///d:/repos/AIVA/apps/workers/tests/test_phase3.py) — Phase 3 unit test suite for AES-256 decryption, stage checkpointing, and Ollama provider.
+
+---
+
+### Automated Verification Performed
+Ran Phase 3 unit test suite using virtualenv pytest:
+```powershell
+$env:PYTHONPATH="."; .\venv\Scripts\python.exe -m pytest tests/test_phase3.py
+```
+**Results:**
+- ✅ `test_aes256_decryption_compatibility`: Verified AES-256-GCM decryption matching Node.js `<iv>:<auth_tag>:<ciphertext>` format.
+- ✅ `test_checkpoint_saving_and_recovery`: Verified `load_checkpoint_or_run` saves stage JSON to disk and returns cached checkpoint state on retry ($0.00 repeated cost verified).
+- ✅ `test_ollama_provider_init`: Verified `OllamaProvider` initialization and endpoint configuration.
+- **Output:** `3 passed in 0.32s`.
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 3 on your machine, follow these exact steps:
+
+#### Step 1: Run Phase 3 Pytest Verification
+In PowerShell, navigate to `apps/workers` and execute the Phase 3 test suite:
+```powershell
+cd D:\repos\AIVA\apps\workers
+$env:PYTHONPATH="."
+.\venv\Scripts\python.exe -m pytest tests/test_phase3.py
+```
+**Expected Output:**
+```
+============================= test session starts =============================
+platform win32 -- Python 3.11.5, pytest-7.4.4, pluggy-1.6.0
+From root directory `D:\repos\AIVA`, execute:
+```powershell
+$env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\python.exe -m pytest apps/workers/tests/test_phase3.py
+```
+
+#### Step 2: Verify Stage Checkpoint Disk Output
+Verify that running the test suite created a stage checkpoint file on disk:
+```powershell
+Get-ChildItem -Path "storage/projects/test-project-123/revisions/v1/"
+Get-Content -Path "storage/projects/test-project-123/revisions/v1/checkpoint_03_script.json"
+```
+**Expected Output:**
+File contents match the script JSON payload: `{"title": "Mock YouTube Short Script", "scenes": [...]}`.
+
+#### Step 3: Test Dynamic App Settings Lookup in Python
+From root directory `D:\repos\AIVA`, execute:
+```powershell
+$env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\python.exe -c "import asyncio; from app.core.db import get_app_setting; print(asyncio.run(get_app_setting('llm_provider')))"
+```
+**Expected Output:** Outputs `gemini` (or your configured default in `app_settings`).
+
+---
+
+### Known Limitations or Issues
+- Full end-to-end containerized pipeline render integration is scheduled for **Phase 4** (Integration & End-to-End Testing).

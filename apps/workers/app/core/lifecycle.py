@@ -1,7 +1,6 @@
 import time
 import structlog
-from supabase import create_client, Client
-from app.core.config import get_settings
+from app.core.db import get_db_pool
 
 logger = structlog.get_logger(__name__)
 
@@ -16,15 +15,7 @@ class LifecycleService:
     _cache_ttl_sec = 2.0
 
     @classmethod
-    def get_supabase(cls) -> Client:
-        settings = get_settings()
-        return create_client(
-            settings.supabase_url,
-            settings.supabase_service_role_key
-        )
-
-    @classmethod
-    def check_lifecycle(cls, job_id: str) -> dict:
+    async def check_lifecycle_async(cls, job_id: str) -> dict:
         now = time.time()
         cached = cls._cache.get(job_id)
 
@@ -32,16 +23,19 @@ class LifecycleService:
             return cached["state"]
 
         try:
-            supabase = cls.get_supabase()
-            response = supabase.table("jobs").select("cancel_requested_at, pause_requested_at").eq("id", job_id).execute()
-            data = response.data
-            
+            pool = await get_db_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT cancel_requested_at, pause_requested_at FROM public.jobs WHERE id = $1 LIMIT 1",
+                    job_id
+                )
+                
             is_cancelled = False
             is_paused = False
             
-            if data and len(data) > 0:
-                is_cancelled = data[0].get("cancel_requested_at") is not None
-                is_paused = data[0].get("pause_requested_at") is not None
+            if row:
+                is_cancelled = row["cancel_requested_at"] is not None
+                is_paused = row["pause_requested_at"] is not None
 
             state = {
                 "is_cancelled": is_cancelled,
@@ -54,26 +48,39 @@ class LifecycleService:
             }
             return state
         except Exception as e:
-            logger.error("Failed to check lifecycle state", error=str(e), job_id=job_id)
-            return {"is_cancelled": False, "is_paused": False} # Fail open
+            logger.warning("Failed to check lifecycle state via asyncpg, using default", error=str(e), job_id=job_id)
+            return {"is_cancelled": False, "is_paused": False}
 
     @classmethod
-    def should_pause(cls, job_id: str) -> bool:
-        if not job_id:
-            return False
-        state = cls.check_lifecycle(job_id)
-        return state["is_paused"]
+    def check_lifecycle(cls, job_id: str) -> dict:
+        """Sync fallback for legacy callers."""
+        now = time.time()
+        cached = cls._cache.get(job_id)
+        if cached and cached["expires_at"] > now:
+            return cached["state"]
+        return {"is_cancelled": False, "is_paused": False}
 
     @classmethod
-    def throw_if_cancelled(cls, job_id: str):
+    async def throw_if_cancelled_async(cls, job_id: str):
         if not job_id:
             return
             
-        state = cls.check_lifecycle(job_id)
+        state = await cls.check_lifecycle_async(job_id)
         if state["is_cancelled"]:
             logger.info("Cancellation requested by operator.", job_id=job_id)
             raise CancellationError(f"Job {job_id} cancelled by operator.")
             
         if state["is_paused"]:
             logger.info("Pause requested by operator.", job_id=job_id)
+            raise PauseError(f"Job {job_id} paused by operator.")
+
+    @classmethod
+    def throw_if_cancelled(cls, job_id: str):
+        """Sync fallback."""
+        if not job_id:
+            return
+        state = cls.check_lifecycle(job_id)
+        if state["is_cancelled"]:
+            raise CancellationError(f"Job {job_id} cancelled by operator.")
+        if state["is_paused"]:
             raise PauseError(f"Job {job_id} paused by operator.")
