@@ -23,12 +23,19 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-COPY package.json /app/package.json
-RUN npm install
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
-COPY . /app
-RUN npm run build || true
+# Copy root monorepo files & packages
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
+COPY tsconfig.base.json /app/tsconfig.base.json
+COPY packages /app/packages
+COPY apps/template-renderer /app/apps/template-renderer
+
+# Install dependencies and build
+RUN pnpm install --no-frozen-lockfile
+RUN pnpm --filter aiva-template-renderer build
 
 EXPOSE 3001
 
-CMD ["npm", "start"]
+CMD ["pnpm", "--filter", "aiva-template-renderer", "start"]

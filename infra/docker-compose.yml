@@ -102,8 +102,8 @@ services:
   # ---------------------------------------------------------------------------
   template-renderer:
     build:
-      context: ../apps/template-renderer
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: apps/template-renderer/Dockerfile
     container_name: aiva-template-renderer
     restart: unless-stopped
     depends_on:
