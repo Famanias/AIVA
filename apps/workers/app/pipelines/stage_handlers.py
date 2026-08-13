@@ -169,7 +169,6 @@ async def handle_voiceover_stage(
     LifecycleService.throw_if_cancelled(job_id)
     tts = await get_tts_provider_async()
     agent = VoiceoverAgent(tts)
-    agent = VoiceoverAgent(tts)
     
     outputs: list[VoiceoverOutput] = await agent.run(scenes, voice_id)
     

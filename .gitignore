@@ -68,3 +68,4 @@ apps/workers/models/sdxl/
 # Supabase local emulator state
 supabase/.temp/
 supabase/.branches/
+/storage
