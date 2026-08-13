@@ -52,7 +52,7 @@ async def rerender_single_scene(
         # 1. Fetch scene and version details
         scene_row = await conn.fetchrow(
             """
-            SELECT s.id, s.sequence_number, s.duration, s.voiceover_url,
+            SELECT s.id, s.sequence_number, s.duration, s.voiceover_url, s.render_url,
                    sv.script_segment, sv.visual_type, sv.visual_prompt, sv.background_broll_url
             FROM public.scenes s
             LEFT JOIN public.scene_versions sv ON s.current_version_id = sv.id
@@ -71,10 +71,42 @@ async def rerender_single_scene(
                 "message": f"Scene {scene_id} not found for project {project_id}"
             }
 
+        # 1b. Fetch project generation profile / aspect ratio / voice
+        proj_row = await conn.fetchrow(
+            """
+            SELECT p.id, p.video_style, j.state_payload
+            FROM public.projects p
+            LEFT JOIN public.jobs j ON j.project_id = p.id
+            WHERE p.id = $1
+            LIMIT 1
+            """,
+            valid_project_uuid
+        )
+
+        voice_id = "en-US-AriaNeural"
+        aspect_ratio = "9:16"
+        width = 1080
+        height = 1920
+
+        if proj_row is not None:
+            try:
+                state_raw = proj_row["state_payload"] if "state_payload" in proj_row else None
+                if state_raw:
+                    payload = json.loads(state_raw) if isinstance(state_raw, str) else state_raw
+                    gen_profile = payload.get("generationProfile", {}) or {}
+                    voice_id = gen_profile.get("voice_id") or payload.get("voice_id") or voice_id
+                    aspect_ratio = gen_profile.get("aspect_ratio") or payload.get("aspect_ratio") or aspect_ratio
+            except Exception:
+                pass
+
+        if aspect_ratio == "16:9":
+            width, height = 1920, 1080
+        elif aspect_ratio == "1:1":
+            width, height = 1080, 1080
+
         # 2. Re-synthesize TTS for the modified scene
         tts = await get_tts_provider_async()
         script_text = scene_row["script_segment"] or ""
-        voice_id = "en-US-AriaNeural"
         
         new_voice_url = scene_row["voiceover_url"]
         new_duration = float(scene_row["duration"] or 0.0)
@@ -93,7 +125,8 @@ async def rerender_single_scene(
                     "Re-synthesized TTS for scene",
                     scene_id=scene_id,
                     duration=new_duration,
-                    words=len(new_word_timings)
+                    words=len(new_word_timings),
+                    voice_id=voice_id
                 )
             except Exception as e:
                 logger.warning("TTS re-synthesis error, falling back to existing audio", error=str(e))
@@ -166,7 +199,7 @@ async def rerender_single_scene(
         # 5. Fetch all project scenes to re-stitch composition
         all_scenes = await conn.fetch(
             """
-            SELECT s.id, s.sequence_number, s.duration, s.voiceover_url, s.voiceover_word_timings,
+            SELECT s.id, s.sequence_number, s.duration, s.voiceover_url, s.voiceover_word_timings, s.render_url,
                    sv.script_segment, sv.visual_type, sv.visual_prompt, sv.background_broll_url
             FROM public.scenes s
             LEFT JOIN public.scene_versions sv ON s.current_version_id = sv.id
@@ -181,6 +214,7 @@ async def rerender_single_scene(
         scene_voice_files = []
         global_word_timings = []
         cumulative_time = 0.0
+        overlay_track = None
 
         for sc in all_scenes:
             dur = float(sc["duration"] or 4.5)
@@ -189,18 +223,27 @@ async def rerender_single_scene(
 
             # Background media (use cached B-roll, visual asset, or fallback)
             bg_key = sc["background_broll_url"]
-            if not bg_key or not os.path.exists(bg_key):
-                bg_key = "storage/audio/ambient_track.mp3"
-
-            bg_tracks.append(
-                MediaReference(
-                    id=str(sc["id"]),
-                    type="video",
-                    storage_key=bg_key,
-                    duration=dur,
-                    mime_type="video/mp4"
+            if bg_key and os.path.exists(bg_key):
+                bg_tracks.append(
+                    MediaReference(
+                        id=str(sc["id"]),
+                        type="video",
+                        storage_key=bg_key,
+                        duration=dur,
+                        mime_type="video/mp4"
+                    )
                 )
-            )
+
+            # Overlay visual render if available
+            render_url = sc.get("render_url")
+            if not overlay_track and render_url and os.path.exists(render_url):
+                overlay_track = MediaReference(
+                    id="remotion_overlay",
+                    type="video",
+                    storage_key=render_url,
+                    duration=dur,
+                    mime_type="video/webm" if render_url.endswith(".webm") else "video/mp4"
+                )
 
             # Voiceover file
             if sc["voiceover_url"] and os.path.exists(sc["voiceover_url"]):
@@ -224,6 +267,9 @@ async def rerender_single_scene(
                 })
 
             cumulative_time += dur
+
+        if overlay_track:
+            overlay_track.duration = cumulative_time
 
         # Concatenate scene voices if available
         project_storage_dir = os.path.abspath(os.path.join(os.getcwd(), "storage", "projects", project_id))
@@ -251,10 +297,15 @@ async def rerender_single_scene(
                         safe_vf = vf.replace('\\', '/')
                         f.write(f"file '{safe_vf}'\n")
                 
-                subprocess.run(
+                res = subprocess.run(
                     [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c", "copy", master_voice_file],
-                    check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
+                if res.returncode != 0:
+                    subprocess.run(
+                        [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c:a", "libmp3lame", master_voice_file],
+                        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                    )
                 voice_track = MediaReference(
                     id="voice_main",
                     type="audio",
@@ -272,6 +323,12 @@ async def rerender_single_scene(
                         duration=cumulative_time,
                         mime_type="audio/mp3"
                     )
+            finally:
+                if os.path.exists(concat_list_file):
+                    try:
+                        os.remove(concat_list_file)
+                    except Exception:
+                        pass
 
         # Background music
         music_file = "storage/audio/ambient_track.mp3"
@@ -286,18 +343,20 @@ async def rerender_single_scene(
         # Re-stitch master video via CompositionEngine
         try:
             valid_bg_tracks = [t for t in bg_tracks if os.path.exists(t.storage_key) and not t.storage_key.endswith('.mp3')]
-            if valid_bg_tracks:
+            if valid_bg_tracks or overlay_track or voice_track:
                 comp_model = CompositionModel(
                     job_id=f"rerender_{project_id}_{scene_row['sequence_number']}",
                     background_tracks=valid_bg_tracks,
+                    overlay_track=overlay_track,
                     voice_track=voice_track,
                     music_track=music_track,
                     word_timings=global_word_timings,
                     output_settings=EncodingProfile(
-                        width=1080,
-                        height=1920,
-                        resolution="1080x1920",
-                        aspect_ratio="9:16"
+                        width=width,
+                        height=height,
+                        resolution=f"{width}x{height}",
+                        aspect_ratio=aspect_ratio,
+                        hardware_acceleration="auto"
                     ),
                     metadata={"project_id": project_id}
                 )

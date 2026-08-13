@@ -36,8 +36,14 @@ async def test_rerender_single_scene_flow():
         }
     ]
 
+    mock_proj_row = {
+        "id": proj_id,
+        "video_style": "stickman_animation",
+        "state_payload": json.dumps({"generationProfile": {"voice_id": "en-US-GuyNeural", "aspect_ratio": "9:16"}})
+    }
+
     mock_conn = AsyncMock()
-    mock_conn.fetchrow.return_value = mock_row
+    mock_conn.fetchrow.side_effect = [mock_row, mock_proj_row]
     mock_conn.fetch.return_value = mock_all_scenes
     mock_conn.execute.return_value = None
 

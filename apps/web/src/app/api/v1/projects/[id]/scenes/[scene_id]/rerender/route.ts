@@ -41,25 +41,34 @@ export async function POST(
 
     // Dispatch worker scene re-render request
     const workerUrl = process.env.WORKER_API_URL || "http://localhost:8000";
-    fetch(`${workerUrl}/pipeline/rerender_scene`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trace_id: projectId,
-        project_id: projectId,
-        scene_id: sceneId,
-        revision: 1,
-      }),
-    }).catch((err) =>
-      console.warn("[Rerender Route] Warning: Worker invocation async failed:", err.message)
-    );
+    let workerData: any = null;
+    try {
+      const workerRes = await fetch(`${workerUrl}/pipeline/rerender_scene`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trace_id: projectId,
+          project_id: projectId,
+          scene_id: sceneId,
+          revision: 1,
+        }),
+      });
+      if (workerRes.ok) {
+        workerData = await workerRes.json();
+      } else {
+        console.warn(`[Rerender Route] Worker returned HTTP ${workerRes.status}`);
+      }
+    } catch (err: any) {
+      console.warn("[Rerender Route] Warning: Worker invocation failed:", err.message);
+    }
 
     return NextResponse.json({
       status: "success",
-      message: `Scene ${sceneId} queued for partial re-rendering`,
+      message: `Scene ${sceneId} partial re-rendering processed`,
       projectId,
       sceneId,
       updatedFields: { script_segment, visual_prompt },
+      worker: workerData?.data || workerData || null,
     });
   } catch (error) {
     return NextResponse.json(
