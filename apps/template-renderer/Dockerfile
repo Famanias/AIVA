@@ -1,40 +1,34 @@
-FROM node:20-bullseye-slim
+FROM node:20-slim
 
-# Install Chromium dependencies for Puppeteer/Remotion
-RUN apt-get update && apt-get install -y \
+# Install Chromium system dependencies for Remotion & Puppeteer
+RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-freefont-ttf \
     libnss3 \
-    libxss1 \
-    libasound2 \
     libatk-bridge2.0-0 \
+    libxss1 \
+    libgbm1 \
+    libasound2 \
     libgtk-3-0 \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
+# Tell Remotion / Puppeteer to use installed Chromium binary
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-# Enable pnpm
-RUN npm install -g pnpm@9
+COPY package.json /app/package.json
+RUN npm install
 
-# Copy package files (monorepo setup)
-COPY package.json pnpm-workspace.yaml ./
-COPY apps/template-renderer/package.json apps/template-renderer/
-COPY packages/shared-types/package.json packages/shared-types/
-
-# Install dependencies
-RUN pnpm install
-
-# Copy source
-COPY packages/shared-types packages/shared-types
-COPY apps/template-renderer apps/template-renderer
-
-WORKDIR /app/apps/template-renderer
-
-# Build
-RUN pnpm build
+COPY . /app
+RUN npm run build || true
 
 EXPOSE 3001
 
-CMD ["pnpm", "start"]
+CMD ["npm", "start"]

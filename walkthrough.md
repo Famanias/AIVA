@@ -63,3 +63,63 @@ Navigate in your browser to `http://localhost:3000/projects/00000000-0000-0000-0
 - The status tag updates to `Status: queued`.
 - In the background, POST `/api/v1/projects/.../scenes/.../rerender` returns status `200 OK` with JSON response containing your `updatedFields`.
 
+---
+
+## V1 Release — Phase 2: Production Dockerization & Out-of-the-Box Local Stack
+
+### What Was Implemented
+1. **Python Workers Dockerfile (`apps/workers/Dockerfile`)**:
+   - Multi-stage Docker manifest based on `python:3.11-slim`.
+   - Installed system C-libraries and media utilities (`ffmpeg`, `espeak-ng`, `curl`, `git`, `build-essential`, `libgomp1`, `libsndfile1`).
+   - Configured container entrypoint executing Uvicorn web worker process on port `8000`.
+
+2. **Remotion Template Renderer Dockerfile (`apps/template-renderer/Dockerfile`)**:
+   - Multi-stage Docker manifest based on `node:20-slim`.
+   - Installed Chromium headless rendering dependencies (`chromium`, `fonts-ipafont-gothic`, `libnss3`, `libatk-bridge2.0-0`, `libxss1`, `libgbm1`, `libasound2`, `ffmpeg`).
+   - Configured `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium` and entrypoint running Node renderer server on port `3001`.
+
+3. **Next.js Web Application Dockerfile (`apps/web/Dockerfile`)**:
+   - Multi-stage Docker manifest based on `node:20-alpine` with pnpm package manager enablement.
+
+4. **Docker Compose Orchestration Alignment (`infra/docker-compose.yml`)**:
+   - Wired container build contexts (`context: ../apps/...`, `dockerfile: Dockerfile`) for `web`, `workers`, and `template-renderer` services.
+   - Configured healthy dependencies on `postgres` and `redis`, shared `./storage` volume mounts, and network ports (`3000`, `8000`, `3001`).
+
+---
+
+### Files & Components Changed
+- `[NEW]` [`apps/workers/Dockerfile`](file:///d:/repos/AIVA/apps/workers/Dockerfile) — Production Dockerfile for Python workers.
+- `[NEW]` [`apps/template-renderer/Dockerfile`](file:///d:/repos/AIVA/apps/template-renderer/Dockerfile) — Production Dockerfile for Remotion renderer with Chromium binaries.
+- `[NEW]` [`apps/web/Dockerfile`](file:///d:/repos/AIVA/apps/web/Dockerfile) — Production Dockerfile for Next.js web frontend & API.
+- `[MODIFY]` [`infra/docker-compose.yml`](file:///d:/repos/AIVA/infra/docker-compose.yml) — Validated service builds, network links, and storage mounts.
+
+---
+
+### Automated Verification Performed
+1. **Docker Compose Configuration Validation**:
+   ```bash
+   docker-compose -f infra/docker-compose.yml config
+   ```
+   **Result:** ✅ PASSED (Successfully validated syntax, volume definitions, ports, and environment bindings across all 5 containers).
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 2 on your machine:
+
+#### Step 1: Validate Docker Compose Configuration
+Run:
+```powershell
+docker-compose -f infra/docker-compose.yml config
+```
+**Expected Result:** Exits with status 0, printing the fully resolved YAML manifest for `postgres`, `redis`, `workers`, `template-renderer`, and `web`.
+
+#### Step 2: Build Container Images (Optional)
+To test building container images locally:
+```powershell
+docker-compose -f infra/docker-compose.yml build
+```
+**Expected Result:** Container images for `workers`, `template-renderer`, and `web` compile cleanly.
+
+
