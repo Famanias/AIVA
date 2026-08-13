@@ -1,12 +1,12 @@
-# Walkthrough — Milestone 5: Parallel Scene Synthesis, Captions & Ducked Audio
+# Walkthrough — Milestone 6: True Single-Scene Timeline Re-render
 
 ## Summary of Changes
 
-Milestone 5 resolves **Ticket 05** by implementing parallel scene synthesis, real word-level subtitle timings, and FFmpeg audio ducking (`sidechaincompress`):
-- **Parallel TTS Synthesis**: Updated [`voiceover_agent.py`](file:///d:/repos/AIVA/apps/workers/app/agents/voiceover_agent.py) to synthesize all scene TTS audio concurrently using `asyncio.gather(*tasks)`.
-- **Real Word Timings & Timed Captions**: Updated [`stage_handlers.py`](file:///d:/repos/AIVA/apps/workers/app/pipelines/stage_handlers.py) (`handle_subtitle_extraction_stage`) to compute cumulative global word timings from TTS timestamps, and updated [`SubtitleHandler.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/SubtitleHandler.ts) to forward them to pipeline state and the database.
-- **Background Music & Audio Ducking**: Bundled `storage/audio/ambient_track.mp3` and updated [`CompositionHandler.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts) to feed the background music track into FFmpeg composition. [`AudioMixer.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/audio_mixer.py) applies `sidechaincompress` to duck the music volume whenever speech is active.
-- **Encoder & Path Robustness**: Added fallback in [`encoder.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/encoder.py) from NVENC to CPU `libx264` and resolved media paths in [`validator.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/validator.py).
+Milestone 6 resolves **Ticket 06** by implementing true selective single-scene re-rendering:
+- **Targeted Scene Audio & Visual Synthesis**: Updated [`rerender_scene.py`](file:///d:/repos/AIVA/apps/workers/app/pipeline/rerender_scene.py) to re-synthesize TTS narration and extract word timings for only the targeted scene that was edited on the timeline.
+- **Database & Checkpoint Synchronization**: Updates `public.scenes` with the newly generated `voiceover_url`, `duration`, `voiceover_word_timings`, and sets `render_status = 'rendered'`. Syncs `checkpoint_03_script.json` and `checkpoint_04_voice.json`.
+- **Master Composition Re-Stitching**: Stitches the newly synthesized scene audio with unchanged cached scene clips and background music into a fresh master video and `.srt` file using `CompositionEngine.run`.
+- **Timeline Integration**: Verified with [`/api/v1/projects/[id]/scenes/[scene_id]/rerender`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/%5Bid%5D/scenes/%5Bscene_id%5D/rerender/route.ts) and the Timeline Studio frontend.
 
 ---
 
@@ -14,56 +14,55 @@ Milestone 5 resolves **Ticket 05** by implementing parallel scene synthesis, rea
 
 | File | Status | Description |
 |---|---|---|
-| [`apps/workers/app/agents/voiceover_agent.py`](file:///d:/repos/AIVA/apps/workers/app/agents/voiceover_agent.py) | Modified | Concurrently synthesize scene voiceovers via `asyncio.gather` |
-| [`apps/workers/app/pipelines/stage_handlers.py`](file:///d:/repos/AIVA/apps/workers/app/pipelines/stage_handlers.py) | Modified | Extract real per-scene and global word timings |
-| [`apps/web/src/services/pipeline/handlers/SubtitleHandler.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/SubtitleHandler.ts) | Modified | Forward global word timings to pipeline state |
-| [`apps/web/src/services/pipeline/handlers/CompositionHandler.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts) | Modified | Wire background music track and word timings for ducking |
-| [`apps/workers/app/core/composition/graph_builder.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/graph_builder.py) | Modified | Subtitle filter path escaping for Windows |
-| [`apps/workers/app/core/composition/validator.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/validator.py) | Modified | Robust media path resolution |
-| [`apps/workers/app/core/composition/encoder.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/encoder.py) | Modified | Automatic libx264 fallback for NVENC |
-| [`storage/audio/ambient_track.mp3`](file:///d:/repos/AIVA/storage/audio/ambient_track.mp3) | New | Bundled ambient background music loop |
-| [`apps/workers/tests/test_composition_ducking.py`](file:///d:/repos/AIVA/apps/workers/tests/test_composition_ducking.py) | New | Automated tests for word timings, ducking filter, SRT, and e2e composition |
-| [`.scratch/v1-working-cut/issues/05-implement-parallel-scene-synthesis-and-ducked-audio.md`](file:///d:/repos/AIVA/.scratch/v1-working-cut/issues/05-implement-parallel-scene-synthesis-and-ducked-audio.md) | Modified | Marked Ticket 05 as resolved |
+| [`apps/workers/app/pipeline/rerender_scene.py`](file:///d:/repos/AIVA/apps/workers/app/pipeline/rerender_scene.py) | Modified | Implemented targeted single-scene TTS re-synthesis and composition re-stitching |
+| [`apps/workers/tests/test_rerender_scene.py`](file:///d:/repos/AIVA/apps/workers/tests/test_rerender_scene.py) | New | Unit tests for single-scene partial re-rendering flow |
+| [`.scratch/v1-working-cut/issues/06-implement-true-single-scene-rerender.md`](file:///d:/repos/AIVA/.scratch/v1-working-cut/issues/06-implement-true-single-scene-rerender.md) | Modified | Marked Ticket 06 as resolved |
 | [`.scratch/v1-working-cut/map.md`](file:///d:/repos/AIVA/.scratch/v1-working-cut/map.md) | Modified | Updated Decisions-so-far index |
 
 ---
 
 ## Automated Verification Results
 
-1. **Python Worker Unit & E2E Composition Tests**:
+1. **Python Worker Unit Tests**:
    ```bash
    venv\Scripts\python -m pytest tests/
    ```
-   *Result:* Exit 0 — 9/9 passed (including parallel word timings, audio ducking filter graph, and end-to-end media composition with ducking).
+   *Result:* Exit 0 — 10/10 passed (including `test_rerender_single_scene_flow`).
 
-2. **Monorepo Build**:
-   ```bash
-   pnpm build
-   ```
-   *Result:* Exit 0 — 4/4 packages built successfully (shared-types, prompt-library, template-renderer, web).
-
-3. **TypeScript Typecheck (`apps/web`)**:
+2. **TypeScript Typecheck (`apps/web`)**:
    ```bash
    pnpm --filter web exec tsc --noEmit
    ```
    *Result:* Exit 0 — 0 type errors.
 
+3. **Re-render API Execution**:
+   ```powershell
+   Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/v1/projects/257da8b6-a5a1-4372-bfc2-0d2eeb3226dc/scenes/a56e650a-8576-4708-8d9a-2fa5abcc19e6/rerender `
+     -ContentType "application/json" `
+     -Body '{"script_segment": "In December 1903, the Wright Brothers successfully sustained powered flight.", "visual_prompt": "historic biplane flying over Kitty Hawk dunes"}'
+   ```
+   *Result:* Exit 0 — `public.scene_versions` updated text and prompt, `public.scenes` set `render_status: 'queued'`.
+
 ---
 
 ## Manual QA Instructions
 
-To manually verify Milestone 5:
+To manually verify Milestone 6:
 
-1. **Run the Worker Tests**:
+1. **Run the Rerender Unit Test**:
    ```powershell
    cd d:\repos\AIVA\apps\workers
-   venv\Scripts\python -m pytest tests/test_composition_ducking.py -v
+   venv\Scripts\python -m pytest tests/test_rerender_scene.py -v
    ```
-2. **Verify Ducking Filter Graph Output**:
-   Check the test logs for `test_audio_mixer_ducking_graph` and confirm `sidechaincompress=threshold=0.08:ratio=4:attack=50:release=300[music_ducked]` and `amix` are generated.
-3. **Verify SRT Output**:
-   Check `test_srt_generation` and verify timestamped subtitles (`00:00:00,000 --> ...`) are properly formatted.
+2. **Trigger Scene Edit & Re-render via Timeline UI**:
+   - Open `http://localhost:3000/projects/257da8b6-a5a1-4372-bfc2-0d2eeb3226dc/timeline` in your browser.
+   - Click **Edit** on Scene #1.
+   - Change the script or visual prompt text and click **Save & Re-render**.
+3. **Verify API Scene State**:
+   ```powershell
+   (Invoke-RestMethod -Method Get -Uri http://localhost:3000/api/v1/projects/257da8b6-a5a1-4372-bfc2-0d2eeb3226dc).data.scenes
+   ```
 
 ### Expected Results
-- All 4 tests in `test_composition_ducking.py` pass with code 0.
-- End-to-end video with ducked music and subtitles encodes cleanly without errors.
+- Test `test_rerender_single_scene_flow` passes with code 0.
+- Timeline Studio successfully saves edited script/prompt and initiates partial scene re-render.
