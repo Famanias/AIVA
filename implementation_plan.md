@@ -1,106 +1,137 @@
-# Implementation Plan — Final 8% to Version 1 MVP Release
+# Implementation Plan — Achieving a Working Version 1 MVP
 
-This implementation plan details the final engineering phases required to transition AIVA from Phase 1 completion to a fully production-ready, 100% self-hosted Version 1 MVP.
+This implementation plan directly addresses all hard standards violations, spec gaps, and broken workflows identified in `review-v1-verdict.md`. It outlines the exact engineering steps required to ensure that a user who clones this repository can run the platform out-of-the-box and generate, edit, and download completed videos.
 
 ---
 
 ## User Review Required
 
 > [!IMPORTANT]
-> **Key Scope & Architectural Decisions:**
-> 1. **Single-Scene Re-Rendering Strategy (Phase 1):** Scene re-rendering will selectively generate voiceover, asset visual, and Remotion video clips for *only* the modified scene ID, then re-stitch the final video using FFmpeg by referencing unchanged cached scene artifacts from `./storage/projects/{id}/revisions/v{rev}/`. This avoids expensive full-video regenerations.
-> 2. **Containerized Production Stack (Phase 2):** Production Dockerfiles will be added for `apps/workers` (Python 3.11 + FFmpeg + Whisper) and `apps/template-renderer` (Node.js 20 + Chromium dependencies), enabling `docker-compose up` to run out-of-the-box on fresh host machines without requiring local host Python/FFmpeg setups.
-> 3. **Export & Storage Delivery (Phase 3):** Standardized file download headers (`Content-Disposition: attachment`) added to `/api/v1/storage/[...path]` for direct MP4, SRT subtitle, and project JSON downloads from the dashboard UI.
+> **Key Architectural Corrective Decisions:**
+> 1. **Complete Decoupling from Supabase Cloud:** Replace all residual `@supabase/supabase-js` database/auth calls in `apps/web` (project creation, status updates, queue control) with direct PostgreSQL queries via `@aiva/database`.
+> 2. **Provider Settings Wiring:** Update worker pipeline `stage_handlers.py` to consume dynamic, decrypted credentials from `app_settings` in PostgreSQL via `get_*_provider_async()`, ensuring user edits in `/settings` drive video generation.
+> 3. **Output File Persistence:** Ensure the worker composition engine saves rendered videos directly to `./storage/projects/{id}/composition.mp4` and subtitles to `./storage/projects/{id}/subtitles.srt`, fixing 404 download errors.
+> 4. **Wired Single-Scene Re-Rendering:** Connect the Timeline Studio `/api/v1/projects/[id]/scenes/[scene_id]/rerender` API route to a worker task that regenerates the scene audio/visual assets and re-stitches `composition.mp4` with FFmpeg.
+> 5. **Docker Build Fixes:** Fix `apps/workers/Dockerfile` entrypoint (`app.main:app`), Next.js multi-stage monorepo build in `apps/web/Dockerfile`, and cross-service `APP_SECRET` harmonization in `docker-compose.yml`.
 
 ---
 
 ## Open Questions
 
 > [!NOTE]
-> None. All decisions align with `AGENTS.md`, `RULES.md`, and `docs/EDD.md`.
+> None. All corrective actions are derived directly from empirical codebase verification of `review-v1-verdict.md`.
 
 ---
 
 ## Proposed Changes
 
-### Phase 1: Single-Scene Re-Rendering & Timeline Studio Integration (~3%)
+### Phase 1: Secret & Database Infrastructure Harmonization
 
-#### [MODIFY] [rerender/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts)
-- Implement POST route handler validating input JSON (`text`, `visual_prompt`, `voice_id`).
-- Update target scene record in PostgreSQL (`scenes` table) with new prompt text.
-- Enqueue a targeted `rerender_scene` job in BullMQ / Redis containing `project_id`, `scene_id`, and `revision`.
+#### [MODIFY] [crypto.ts](file:///d:/repos/AIVA/packages/database/src/crypto.ts) & [db.py](file:///d:/repos/AIVA/apps/workers/app/core/db.py)
+- Standardize default fallback master secret across TS and Python to `aiva_default_local_master_secret_2026`.
+- Remove silent passthrough of invalid ciphertexts in `crypto.ts`; log error and throw explicit exceptions on decryption failure.
 
-#### [NEW] [rerender_scene.py](file:///d:/repos/AIVA/apps/workers/app/pipeline/rerender_scene.py)
-- Implement `rerender_single_scene` worker function:
-  1. Generate new TTS voiceover file for the specific scene.
-  2. Perform Whisper alignment for new scene audio.
-  3. Fetch/generate new visual asset (B-roll/SDXL) for the scene.
-  4. Render Remotion VP9 clip for the modified scene only.
-  5. Invoke FFmpeg smart stitcher reusing cached unchanged scene clips, updating `composition.mp4` on disk.
+#### [MODIFY] [docker-compose.yml](file:///d:/repos/AIVA/infra/docker-compose.yml) & [.env.example](file:///d:/repos/AIVA/.env.example)
+- Pass `APP_SECRET` and `DATABASE_URL` explicitly to `web`, `workers`, and `template-renderer` services.
+- Update `.env.example` and `SETUP.md` to document `APP_SECRET`.
+
+#### [MODIFY] [apps/web project creation & queue control services]
+- Replace `supabase-js` client in `apps/web` with `@aiva/database` `query()` calls for project insertion and job status updates.
+
+---
+
+### Phase 2: Real Provider Wiring & In-App Settings Integration
+
+#### [MODIFY] [stage_handlers.py](file:///d:/repos/AIVA/apps/workers/app/pipelines/stage_handlers.py) & [factory.py](file:///d:/repos/AIVA/apps/workers/app/providers/factory.py)
+- Update `stage_handlers.py` to use `await get_llm_provider_async()`, `await get_tts_provider_async()`, `await get_search_provider_async()`, `await get_image_provider_async()`, and `await get_broll_provider_async()`.
+- Ensure provider factories query and decrypt credentials from PostgreSQL `app_settings` table at runtime.
+
+#### [MODIFY] [test-ollama/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/settings/test-ollama/route.ts)
+- Add URL parsing and hostname validation to sanitize user-provided Ollama base URLs before issuing server-side HTTP checks.
+
+---
+
+### Phase 3: Brief Creation Form Expansion & Route Collision Cleanup
+
+#### [DELETE] [apps/web/src/app/projects/[id]/page.tsx](file:///d:/repos/AIVA/apps/web/src/app/projects/%5Bid%5D/page.tsx)
+- Remove duplicate route file to resolve Next.js route collision with `apps/web/src/app/(dashboard)/projects/[id]/page.tsx`.
+
+#### [MODIFY] [apps/web/src/app/page.tsx](file:///d:/repos/AIVA/apps/web/src/app/page.tsx)
+- Expand Home Page Brief Creation form:
+  - Input mode toggle: Topic Input vs Custom Script Paste.
+  - Video Aspect Ratio / Format: Vertical 9:16 Shorts vs Horizontal 16:9 YouTube.
+  - Duration Target: 30s, 60s, 90s, 180s.
+  - Voice Selection dropdown (e.g. `en-US-AriaNeural`, `en-US-GuyNeural`).
+  - Tone / Persona selection (Informative, Dramatic, Energetic).
+- Save selected options into `projects` and `generation_profiles` tables in PostgreSQL.
+
+---
+
+### Phase 4: Composition Output Persistence, Audio Ducking & Subtitles
+
+#### [MODIFY] [engine.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/engine.py) & [CompositionHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts)
+- After FFmpeg composition completes, copy/persist final video to `./storage/projects/{id}/composition.mp4`.
+- Generate and save SRT subtitle file to `./storage/projects/{id}/subtitles.srt`.
+- Wire background music track selection and sidechain compression ducking parameters in `engine.py`.
+- Ensure Faster-Whisper provider returns word-level timestamps, falling back to estimated word timings if local Whisper weights are unpopulated.
+
+---
+
+### Phase 5: End-to-End Single-Scene Partial Re-Rendering Pipeline
+
+#### [MODIFY] [rerender/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts) & [rerender_scene.py](file:///d:/repos/AIVA/apps/workers/app/pipeline/rerender_scene.py)
+- Wire `POST /api/v1/projects/[id]/scenes/[scene_id]/rerender` to enqueue a background job.
+- Implement python worker consumer for single-scene re-rendering:
+  1. Re-generate TTS audio for modified scene.
+  2. Fetch/generate new visual asset for scene.
+  3. Render Remotion VP9 clip for modified scene.
+  4. Invoke FFmpeg to re-stitch `composition.mp4` by combining new scene clip with unchanged cached scene clips.
+  5. Update PostgreSQL scene status to `completed`.
 
 #### [MODIFY] [page.tsx](file:///d:/repos/AIVA/apps/web/src/app/(dashboard)/projects/[id]/timeline/page.tsx)
-- Connect the **"Re-render Scene"** button to the rerender API endpoint.
-- Add card-level loading states (`IsReRendering...`) and toast notifications.
-- Dynamically refresh scene preview video and audio playback upon single-scene completion.
+- Add polling/event listener on Timeline Studio page to auto-refresh player when single-scene re-rendering completes.
 
 ---
 
-### Phase 2: Production Dockerization & Out-of-the-Box Local Stack (~3%)
+### Phase 6: Production Dockerization Fixes & Fresh-Clone Certification
 
-#### [NEW] [Dockerfile](file:///d:/repos/AIVA/apps/workers/Dockerfile)
-- Multi-stage Dockerfile for Python workers:
-  - Base: `python:3.11-slim`.
-  - Install system packages: `ffmpeg`, `espeak-ng`, `curl`, `git`.
-  - Install Python virtualenv & dependencies from `requirements.txt`.
-  - Configure container entrypoint running FastAPI worker process.
+#### [MODIFY] [Dockerfile](file:///d:/repos/AIVA/apps/workers/Dockerfile)
+- Update entrypoint CMD to `["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]`.
 
-#### [NEW] [Dockerfile](file:///d:/repos/AIVA/apps/template-renderer/Dockerfile)
-- Dockerfile for Node.js Remotion renderer:
-  - Base: `node:20-slim`.
-  - Install Chromium dependencies (`libnss3`, `libatk-bridge2.0-0`, `libxss1`, `libgbm1`, `fonts-ipafont-gothic`).
-  - Install npm dependencies and build Remotion bundle.
+#### [MODIFY] [Dockerfile](file:///d:/repos/AIVA/apps/web/Dockerfile)
+- Configure complete pnpm monorepo multi-stage build:
+  - Install dependencies (`pnpm install`).
+  - Build `@aiva/database` and `apps/web` (`pnpm build`).
+  - Run production server (`pnpm start`).
 
-#### [MODIFY] [docker-compose.yml](file:///d:/repos/AIVA/infra/docker-compose.yml)
-- Configure `build` contexts for `web`, `workers`, and `template-renderer` services.
-- Define shared `./storage` volume mounts across containers for direct media file exchange.
-- Add healthcheck dependencies ensuring `postgres` and `redis` start before worker processes.
-
----
-
-### Phase 3: Project Export, Download & Production Polish (~2%)
-
-#### [MODIFY] [route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/storage/[...path]/route.ts)
-- Add support for `?download=true` query parameter.
-- Set `Content-Disposition: attachment; filename="..."` headers to trigger native browser file downloads.
-
-#### [MODIFY] [page.tsx](file:///d:/repos/AIVA/apps/web/src/app/(dashboard)/projects/[id]/page.tsx)
-- Add **"Download MP4"**, **"Download SRT Subtitles"**, and **"Export Project Checkpoint"** buttons to the project overview dashboard.
-- Display detailed failure diagnostics and an interactive **"Resume Pipeline"** button when a job fails (backed by disk checkpoint recovery).
+#### [NEW] [certify_v1.ts](file:///d:/repos/AIVA/scripts/certify_v1.ts)
+- Create comprehensive V1 verification script:
+  - Submits a brief (topic + custom script).
+  - Runs full worker agent chain & FFmpeg composition.
+  - Verifies `./storage/projects/{id}/composition.mp4` exists and is non-empty.
+  - Triggers single-scene re-rendering and verifies updated composition file.
 
 ---
 
 ## Verification Plan
 
 ### Automated Tests
-1. **Single-Scene Rerender Test:**
+1. **Workspace Build & Type Check:**
    ```bash
-   pnpm --filter web test
+   pnpm build && pnpm type-check
    ```
-   Verify POST `/api/v1/projects/[id]/scenes/[scene_id]/rerender` API route validation and execution payload.
-
-2. **Docker Build Certification:**
+2. **Worker Pytest Suite:**
    ```bash
-   docker-compose build
+   .\apps\workers\venv\Scripts\python.exe -m pytest apps/workers/tests
    ```
-   Verify all container images (`web`, `workers`, `template-renderer`) build cleanly without errors.
-
-3. **End-to-End Golden Pipeline Test:**
+3. **Full V1 End-to-End Certification:**
    ```bash
-   pnpm certify
+   pnpm tsx scripts/certify_v1.ts
    ```
-   Run full system pipeline certification test in local mock mode.
 
 ### Manual Verification
-1. Open `/projects/[id]/timeline` page, edit a scene's text prompt, click **"Re-render Scene"**, and verify only that specific scene is regenerated while updating the preview player.
-2. Click **"Download MP4"** on the project page and verify browser downloads the final composition video file.
-3. Run `docker-compose up` on a clean environment and verify the entire stack initializes successfully.
+1. `docker-compose -f infra/docker-compose.yml up --build`
+2. Open `http://localhost:3000` — submit brief with custom script paste & voice selection.
+3. Observe live job progress → verify video generates and plays in player on `/projects/[id]`.
+4. Click **"Download MP4"** → verify file downloads.
+5. Go to Timeline Studio (`/projects/[id]/timeline`), edit Scene #1, click **"Save & Re-render"** → verify only Scene #1 re-renders and output video updates.

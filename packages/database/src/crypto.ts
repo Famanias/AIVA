@@ -39,6 +39,8 @@ export function decryptSecret(cipherText: string, secret?: string): string {
   // If plain unencrypted value is passed or format doesn't match expected pattern
   const parts = cipherText.split(":");
   if (parts.length !== 3) {
+    // If string does not match AES-GCM output pattern, log warning and return raw value
+    console.warn(`[Crypto] Value does not match encrypted format (iv:tag:ct). Returning as plaintext fallback.`);
     return cipherText;
   }
 
@@ -57,6 +59,7 @@ export function decryptSecret(cipherText: string, secret?: string): string {
     
     return decrypted;
   } catch (error) {
+    console.error(`[Crypto] Failed to decrypt secret payload: ${(error as Error).message}`);
     throw new Error(`Failed to decrypt secret payload: ${(error as Error).message}`);
   }
 }

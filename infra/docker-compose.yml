@@ -84,6 +84,8 @@ services:
       - POSTGRES_DB=aiva
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/aiva
+      - APP_SECRET=aiva_default_local_master_secret_2026
     volumes:
       - ../storage:/app/storage
       - model_cache:/app/models
@@ -121,6 +123,8 @@ services:
       - POSTGRES_DB=aiva
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/aiva
+      - APP_SECRET=aiva_default_local_master_secret_2026
     volumes:
       - ../storage:/app/storage
 
@@ -150,6 +154,8 @@ services:
       - POSTGRES_DB=aiva
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/aiva
+      - APP_SECRET=aiva_default_local_master_secret_2026
       - WORKER_API_URL=http://workers:8000
       - TEMPLATE_RENDERER_URL=http://template-renderer:3001
     volumes:

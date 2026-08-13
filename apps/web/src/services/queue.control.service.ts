@@ -1,267 +1,219 @@
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@aiva/shared-types'
-import { queueManager } from './queue/BullMQQueueManager'
-import { PipelineLogger } from './pipeline/PipelineLogger'
+import { query } from '@aiva/database';
+import { queueManager } from './queue/BullMQQueueManager';
 
 export class QueueControlService {
-  private static adminSupabase = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
   /**
    * Stops a specific job.
    * If the job is queued (waiting/delayed), it is removed from the queue and instantly cancelled.
    * If the job is active, we flag it for cancellation so the worker can cooperatively exit.
    */
   static async stopJob(jobId: string, projectId: string, userId: string): Promise<boolean> {
-    const { data: project } = await this.adminSupabase
-      .from('projects')
-      .select('status')
-      .eq('id', projectId)
-      .single()
+    const projectRes = await query(
+      "SELECT status FROM public.projects WHERE id = $1 LIMIT 1",
+      [projectId]
+    );
 
-    if (!project) return false;
+    if (projectRes.rows.length === 0) return false;
+    const project = projectRes.rows[0];
     if (['completed', 'failed', 'cancelled'].includes(project.status)) return true;
 
-    const { data: job } = await this.adminSupabase
-      .from('jobs')
-      .select('current_step')
-      .eq('id', jobId)
-      .single()
+    const jobRes = await query(
+      "SELECT current_step FROM public.jobs WHERE id = $1 LIMIT 1",
+      [jobId]
+    );
       
-    if (!job) return false;
+    if (jobRes.rows.length === 0) return false;
+    const job = jobRes.rows[0];
 
-    const bullMqJobId = `${jobId}_${job.current_step}`
-    const jobState = await queueManager.getJobState(bullMqJobId)
-    const statusStr = (project.status as string) || ''
-    const isPaused = statusStr === 'paused'
-    const isCancelling = statusStr === 'cancelling'
-    const isQueuedInBull = jobState && (jobState.status === 'waiting' || jobState.status === 'delayed')
+    const bullMqJobId = `${jobId}_${job.current_step}`;
+    const jobState = await queueManager.getJobState(bullMqJobId);
+    const statusStr = (project.status as string) || '';
+    const isPaused = statusStr === 'paused';
+    const isCancelling = statusStr === 'cancelling';
+    const isQueuedInBull = jobState && (jobState.status === 'waiting' || jobState.status === 'delayed');
 
     // Mark as cancelled or cancelling depending on queue state and project state
     if (isPaused || isQueuedInBull || isCancelling) {
-      // 1. Remove from Queue
       if (isQueuedInBull) {
-        await queueManager.removeJob(bullMqJobId)
+        await queueManager.removeJob(bullMqJobId);
       }
 
-      // 2. Mark project as cancelled immediately
-      await this.adminSupabase
-        .from('projects')
-        .update({ status: 'cancelled' })
-        .eq('id', projectId)
+      await query(
+        "UPDATE public.projects SET status = 'cancelled' WHERE id = $1",
+        [projectId]
+      );
 
-      // 3. Set cancel timestamp and reason, leave current_step untouched
-      await (this.adminSupabase
-        .from('jobs')
-        .update as any)({ 
-          cancel_requested_at: new Date().toISOString(),
-          cancel_requested_by: userId,
-          cancelled_at: new Date().toISOString(),
-          cancel_reason: isCancelling ? 'Forced cancellation by operator' : 'User requested cancellation'
-        })
-        .eq('id', jobId)
+      await query(
+        `UPDATE public.jobs SET 
+          cancel_requested_at = NOW(),
+          cancel_requested_by = $1,
+          cancelled_at = NOW(),
+          cancel_reason = $2
+        WHERE id = $3`,
+        [
+          userId,
+          isCancelling ? 'Forced cancellation by operator' : 'User requested cancellation',
+          jobId
+        ]
+      );
 
-      // 4. Log event
-      const waitLogger = new PipelineLogger(jobId, 'cancelled', 'orchestrator', this.adminSupabase)
-      const actionSource = isCancelling ? 'force cancelled' : (isPaused ? 'paused' : 'waiting in queue');
-      await waitLogger.info(`Cancellation requested by operator. Job was ${actionSource} and has been immediately cancelled.`)
-
-      return true
+      return true;
     } else {
-      // Job is active
-      // Mark project as cancelling immediately so UI updates
-      await this.adminSupabase
-        .from('projects')
-        .update({ status: 'cancelling' as any })
-        .eq('id', projectId)
+      await query(
+        "UPDATE public.projects SET status = 'cancelling' WHERE id = $1",
+        [projectId]
+      );
 
-      // We set the cancellation requested flag. The worker will pick this up cooperatively.
-      await (this.adminSupabase
-        .from('jobs')
-        .update as any)({ 
-          cancel_requested_at: new Date().toISOString(),
-          cancel_requested_by: userId,
-          cancel_reason: 'User requested cancellation'
-        })
-        .eq('id', jobId)
+      await query(
+        `UPDATE public.jobs SET 
+          cancel_requested_at = NOW(),
+          cancel_requested_by = $1,
+          cancel_reason = 'User requested cancellation'
+        WHERE id = $2`,
+        [userId, jobId]
+      );
 
-      const activeLogger = new PipelineLogger(jobId, 'cancelling', 'orchestrator', this.adminSupabase)
-      await activeLogger.info('Cancellation requested by operator. Waiting for current stage to exit safely.')
-
-      return true
+      return true;
     }
   }
 
   static async pauseJob(jobId: string, projectId: string, userId: string): Promise<boolean> {
-    const { data: job } = await this.adminSupabase
-      .from('jobs')
-      .select('current_step')
-      .eq('id', jobId)
-      .single()
+    const jobRes = await query(
+      "SELECT current_step FROM public.jobs WHERE id = $1 LIMIT 1",
+      [jobId]
+    );
       
-    if (!job) return false;
+    if (jobRes.rows.length === 0) return false;
+    const job = jobRes.rows[0];
 
-    const bullMqJobId = `${jobId}_${job.current_step}`
-    const jobState = await queueManager.getJobState(bullMqJobId)
+    const bullMqJobId = `${jobId}_${job.current_step}`;
+    const jobState = await queueManager.getJobState(bullMqJobId);
 
     if (jobState && (jobState.status === 'waiting' || jobState.status === 'delayed')) {
-      await queueManager.removeJob(bullMqJobId)
+      await queueManager.removeJob(bullMqJobId);
 
-      await this.adminSupabase
-        .from('projects')
-        .update({ status: 'paused' })
-        .eq('id', projectId)
+      await query(
+        "UPDATE public.projects SET status = 'paused' WHERE id = $1",
+        [projectId]
+      );
 
-      await (this.adminSupabase
-        .from('jobs')
-        .update as any)({ 
-          pause_requested_at: new Date().toISOString(),
-          pause_requested_by: userId
-        })
-        .eq('id', jobId)
+      await query(
+        `UPDATE public.jobs SET 
+          pause_requested_at = NOW(),
+          pause_requested_by = $1
+        WHERE id = $2`,
+        [userId, jobId]
+      );
 
-      const waitLogger = new PipelineLogger(jobId, 'paused', 'orchestrator', this.adminSupabase)
-      await waitLogger.info('Pause requested by operator. Job was waiting and has been successfully paused.')
-
-      return true
+      return true;
     } else {
-      await this.adminSupabase
-        .from('projects')
-        .update({ status: 'paused' as any })
-        .eq('id', projectId)
+      await query(
+        "UPDATE public.projects SET status = 'paused' WHERE id = $1",
+        [projectId]
+      );
 
-      await (this.adminSupabase
-        .from('jobs')
-        .update as any)({ 
-          pause_requested_at: new Date().toISOString(),
-          pause_requested_by: userId
-        })
-        .eq('id', jobId)
+      await query(
+        `UPDATE public.jobs SET 
+          pause_requested_at = NOW(),
+          pause_requested_by = $1
+        WHERE id = $2`,
+        [userId, jobId]
+      );
 
-      const activeLogger = new PipelineLogger(jobId, 'pausing', 'orchestrator', this.adminSupabase)
-      await activeLogger.info('Pause requested by operator. Waiting for current stage to yield cooperatively.')
-
-      return true
+      return true;
     }
   }
 
   static async resumeJob(jobId: string, projectId: string, userId: string): Promise<boolean> {
-    await this.adminSupabase
-        .from('projects')
-        .update({ status: 'queued' })
-        .eq('id', projectId)
+    await query(
+      "UPDATE public.projects SET status = 'queued' WHERE id = $1",
+      [projectId]
+    );
 
-    await (this.adminSupabase
-      .from('jobs')
-      .update as any)({ 
-        pause_requested_at: null,
-        pause_requested_by: null
-      })
-      .eq('id', jobId)
+    await query(
+      `UPDATE public.jobs SET 
+        pause_requested_at = NULL,
+        pause_requested_by = NULL
+      WHERE id = $1`,
+      [jobId]
+    );
 
-    const logger = new PipelineLogger(jobId, 'queued', 'orchestrator', this.adminSupabase)
-    await logger.info('Resume requested by operator. Job re-enqueued to continue from last checkpoint.')
-
-    const { data: job } = await this.adminSupabase
-      .from('jobs')
-      .select('current_step')
-      .eq('id', jobId)
-      .single()
+    const jobRes = await query(
+      "SELECT current_step FROM public.jobs WHERE id = $1 LIMIT 1",
+      [jobId]
+    );
       
-    if (job) {
-      await queueManager.enqueueJob(jobId, job.current_step)
+    if (jobRes.rows.length > 0) {
+      await queueManager.enqueueJob(jobId, jobRes.rows[0].current_step);
     }
-    return true
+    return true;
   }
 
   static async stopSelected(jobIds: string[], userId: string): Promise<void> {
     for (const jobId of jobIds) {
-      // We need the projectId for this job to cancel it properly.
-      const { data } = await this.adminSupabase
-        .from('jobs')
-        .select('project_id')
-        .eq('id', jobId)
-        .single()
-      
-      if (data) {
-        await this.stopJob(jobId, data.project_id, userId)
+      const res = await query(
+        "SELECT project_id FROM public.jobs WHERE id = $1 LIMIT 1",
+        [jobId]
+      );
+      if (res.rows.length > 0) {
+        await this.stopJob(jobId, res.rows[0].project_id, userId);
       }
     }
   }
 
   static async pauseSelected(jobIds: string[], userId: string): Promise<void> {
     for (const jobId of jobIds) {
-      const { data } = await this.adminSupabase
-        .from('jobs')
-        .select('project_id')
-        .eq('id', jobId)
-        .single()
-      
-      if (data) {
-        await this.pauseJob(jobId, data.project_id, userId)
+      const res = await query(
+        "SELECT project_id FROM public.jobs WHERE id = $1 LIMIT 1",
+        [jobId]
+      );
+      if (res.rows.length > 0) {
+        await this.pauseJob(jobId, res.rows[0].project_id, userId);
       }
     }
   }
 
   static async resumeSelected(jobIds: string[], userId: string): Promise<void> {
     for (const jobId of jobIds) {
-      const { data } = await this.adminSupabase
-        .from('jobs')
-        .select('project_id')
-        .eq('id', jobId)
-        .single()
-      
-      if (data) {
-        await this.resumeJob(jobId, data.project_id, userId)
+      const res = await query(
+        "SELECT project_id FROM public.jobs WHERE id = $1 LIMIT 1",
+        [jobId]
+      );
+      if (res.rows.length > 0) {
+        await this.resumeJob(jobId, res.rows[0].project_id, userId);
       }
     }
   }
 
   static async stopAll(filter: 'queued' | 'processing' | 'all', userId: string): Promise<void> {
-    let query = this.adminSupabase.from('projects').select('id, status, jobs(id)')
-    
+    let sql = `SELECT j.id AS job_id, j.project_id FROM public.jobs j JOIN public.projects p ON j.project_id = p.id`;
     if (filter === 'queued') {
-      query = query.eq('status', 'queued')
+      sql += ` WHERE p.status = 'queued'`;
     } else if (filter === 'processing') {
-      query = query.in('status', ['generating'])
+      sql += ` WHERE p.status = 'generating'`;
     } else {
-      query = query.in('status', ['queued', 'generating'])
+      sql += ` WHERE p.status IN ('queued', 'generating')`;
     }
 
-    const { data } = await query
-    
-    if (data) {
-      for (const project of data) {
-        const jobs = Array.isArray(project.jobs) ? project.jobs : (project.jobs ? [project.jobs] : [])
-        for (const job of jobs) {
-          await this.stopJob(job.id, project.id, userId)
-        }
-      }
+    const res = await query(sql);
+    for (const row of res.rows) {
+      await this.stopJob(row.job_id, row.project_id, userId);
     }
   }
 
   static async pauseAll(filter: 'queued' | 'processing' | 'all', userId: string): Promise<void> {
-    let query = this.adminSupabase.from('projects').select('id, status, jobs(id)')
-    
+    let sql = `SELECT j.id AS job_id, j.project_id FROM public.jobs j JOIN public.projects p ON j.project_id = p.id`;
     if (filter === 'queued') {
-      query = query.eq('status', 'queued')
+      sql += ` WHERE p.status = 'queued'`;
     } else if (filter === 'processing') {
-      query = query.in('status', ['generating'])
+      sql += ` WHERE p.status = 'generating'`;
     } else {
-      query = query.in('status', ['queued', 'generating'])
+      sql += ` WHERE p.status IN ('queued', 'generating')`;
     }
 
-    const { data } = await query
-    
-    if (data) {
-      for (const project of data) {
-        const jobs = Array.isArray(project.jobs) ? project.jobs : (project.jobs ? [project.jobs] : [])
-        for (const job of jobs) {
-          await this.pauseJob(job.id, project.id, userId)
-        }
-      }
+    const res = await query(sql);
+    for (const row of res.rows) {
+      await this.pauseJob(row.job_id, row.project_id, userId);
     }
   }
 }

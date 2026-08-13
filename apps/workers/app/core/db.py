@@ -53,7 +53,7 @@ def decrypt_secret(encrypted_str: str) -> str:
         return encrypted_str
     
     try:
-        secret = os.getenv("APP_SECRET", "aiva-default-development-secret-key-32bytes")
+        secret = os.getenv("APP_SECRET", "aiva_default_local_master_secret_2026")
         key = hashlib.sha256(secret.encode("utf-8")).digest()
         aesgcm = AESGCM(key)
         
@@ -64,7 +64,7 @@ def decrypt_secret(encrypted_str: str) -> str:
         decrypted_bytes = aesgcm.decrypt(iv, ciphertext + auth_tag, None)
         return decrypted_bytes.decode("utf-8")
     except Exception as err:
-        logger.error("Failed to decrypt secret in Python worker", error=str(err))
+        logger.error("Failed to decrypt secret payload in Python worker", error=str(err))
         return ""
 
 
