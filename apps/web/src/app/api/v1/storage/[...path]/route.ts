@@ -66,6 +66,7 @@ export async function GET(
   }
 
   // Full file response (200 OK)
+  const isDownload = request.nextUrl.searchParams.get("download") === "true";
   const fileStream = fs.createReadStream(filePath);
   const stream = new ReadableStream({
     start(controller) {
@@ -75,11 +76,18 @@ export async function GET(
     },
   });
 
+  const headers: Record<string, string> = {
+    "Content-Length": stat.size.toString(),
+    "Content-Type": contentType,
+  };
+
+  if (isDownload) {
+    const filename = path.basename(filePath);
+    headers["Content-Disposition"] = `attachment; filename="${filename}"`;
+  }
+
   return new NextResponse(stream, {
     status: 200,
-    headers: {
-      "Content-Length": stat.size.toString(),
-      "Content-Type": contentType,
-    },
+    headers,
   });
 }

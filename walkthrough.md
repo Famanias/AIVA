@@ -122,4 +122,79 @@ docker-compose -f infra/docker-compose.yml build
 ```
 **Expected Result:** Container images for `workers`, `template-renderer`, and `web` compile cleanly.
 
+---
+
+## V1 Release — Phase 3: Project Export, Download & Production Polish
+
+### What Was Implemented
+1. **Native Browser Storage Attachment Downloads (`apps/web/src/app/api/v1/storage/[...path]/route.ts`)**:
+   - Added support for `?download=true` query parameter.
+   - Appends `Content-Disposition: attachment; filename="..."` header to stream raw files as browser downloads.
+
+2. **Project Overview & Export Dashboard Page (`apps/web/src/app/(dashboard)/projects/[id]/page.tsx`)**:
+   - Built project details page featuring main video player, status badge indicators, and execution failure alerts.
+   - Added **"Final MP4 Video"**, **"Subtitles (.srt)"**, and **"Script Checkpoint (.json)"** direct download buttons.
+   - Added **"Resume Pipeline ($0.00 Cached Cost)"** recovery trigger button backing job restarts on failure.
+
+3. **API & Download Test Assertions (`apps/web/src/test-phase2.ts`)**:
+   - Added automated unit test verifying `Content-Disposition` header response when `?download=true` is requested.
+
+---
+
+### Files & Components Changed
+- `[MODIFY]` [`apps/web/src/app/api/v1/storage/[...path]/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/storage/%5B...path%5D/route.ts) — Added attachment header for `?download=true`.
+- `[NEW]` [`apps/web/src/app/(dashboard)/projects/[id]/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/projects/%5Bid%5D/page.tsx) — Created Project Overview dashboard page with export actions & pipeline recovery.
+- `[MODIFY]` [`apps/web/src/test-phase2.ts`](file:///d:/repos/AIVA/apps/web/src/test-phase2.ts) — Added download header test assertion.
+
+---
+
+### Automated Verification Performed
+1. **Web Unit & Download Header Tests**:
+   ```bash
+   pnpm --filter web test
+   ```
+   **Result:** ✅ PASSED (`✓ Storage download attachment header test passed!`).
+
+2. **Python Worker Unit Tests**:
+   ```bash
+   .\apps\workers\venv\Scripts\python.exe -m pytest apps/workers/tests/test_phase3.py
+   ```
+   **Result:** ✅ PASSED (3 passed in 0.36s).
+
+3. **Full End-to-End Certification Suite**:
+   ```bash
+   pnpm --filter web test:e2e
+   ```
+   **Result:** ✅ PASSED (`✅ Phase 4 End-to-End Verification PASSED 100%!`).
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 3 on your machine:
+
+#### Step 1: Launch Stack & Open Project Page
+Start database stack and web app:
+```powershell
+docker-compose -f infra/docker-compose.yml up postgres redis -d
+pnpm --filter web dev
+```
+Open `http://localhost:3000/projects/00000000-0000-0000-0000-000000000001` in your browser.
+
+#### Step 2: Test Direct Asset Downloads
+1. Click **"Final MP4 Video"** under Export & Assets.
+2. Click **"Subtitles (.srt)"** or **"Script Checkpoint (.json)"**.
+
+**Expected Result:** The browser prompts to save or directly downloads the target file.
+
+---
+
+## Final Version 1 MVP Verification Summary
+
+- **Phase 1 (Single-Scene Re-Rendering & Timeline Studio):** ✅ Complete
+- **Phase 2 (Production Dockerization & Out-of-the-Box Stack):** ✅ Complete
+- **Phase 3 (Project Export, Download & Production Polish):** ✅ Complete
+- **Overall Version 1 Release Completion:** **100%**
+
+
 

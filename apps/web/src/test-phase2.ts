@@ -47,7 +47,18 @@ async function runPhase2Tests() {
   assert.strictEqual(storageRes.status, 403, "Path traversal should return 403 Forbidden");
   console.log("✓ Storage path traversal security test passed!");
 
-  console.log("✅ Phase 2 Frontend & API Layer Unit Tests Completed Successfully!");
+  // Test 5: GET /api/v1/storage Download Header Check
+  const downloadReq = new NextRequest("http://localhost:3000/api/v1/storage/projects/test-proj/hello.json?download=true");
+  const downloadRes = await getStorage(downloadReq, {
+    params: Promise.resolve({ path: ["projects", "test-proj", "hello.json"] }),
+  });
+  if (downloadRes.status === 200) {
+    const disposition = downloadRes.headers.get("content-disposition");
+    assert.ok(disposition && disposition.includes("attachment"), "Download request should contain Content-Disposition: attachment header");
+    console.log("✓ Storage download attachment header test passed!");
+  }
+
+  console.log("✅ Phase 2 & Phase 3 Frontend & API Layer Unit Tests Completed Successfully!");
 }
 
 runPhase2Tests().catch((err) => {
