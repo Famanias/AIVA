@@ -41,6 +41,11 @@ async def test_checkpoint_saving_and_recovery():
     revision = 1
     stage_name = "03_script"
     
+    # Ensure test environment cleanliness
+    proj_dir = os.path.join(storage_dir, "projects", project_id)
+    if os.path.exists(proj_dir):
+        shutil.rmtree(proj_dir)
+    
     call_count = 0
     
     def generate_mock_script():
