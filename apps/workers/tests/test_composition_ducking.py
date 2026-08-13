@@ -136,3 +136,43 @@ def test_composition_engine_ducking_e2e():
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+
+@pytest.mark.asyncio
+async def test_handle_voiceover_stage_multi_scene_concatenation():
+    import shutil
+    import subprocess
+    from unittest.mock import AsyncMock, patch
+    from app.pipelines.stage_handlers import handle_voiceover_stage
+    from app.providers.tts.base import TTSSynthesisResult, WordTiming
+
+    mock_tts = AsyncMock()
+    ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+    
+    # Create two dummy audio files using FFmpeg sine waves
+    temp_dir = tempfile.mkdtemp()
+    try:
+        f1 = os.path.join(temp_dir, "s1.mp3")
+        f2 = os.path.join(temp_dir, "s2.mp3")
+        subprocess.run([ffmpeg_bin, "-y", "-f", "lavfi", "-i", "sine=f=440:d=1", "-c:a", "libmp3lame", f1], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        subprocess.run([ffmpeg_bin, "-y", "-f", "lavfi", "-i", "sine=f=880:d=1", "-c:a", "libmp3lame", f2], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        mock_tts.synthesize.side_effect = [
+            TTSSynthesisResult(audio_url=f1, word_timings=[WordTiming(word="one", start=0, end=1)], duration_sec=1.0),
+            TTSSynthesisResult(audio_url=f2, word_timings=[WordTiming(word="two", start=0, end=1)], duration_sec=1.0),
+        ]
+
+        scenes = [
+            {"sequence_number": 1, "scriptSegment": "Scene one text"},
+            {"sequence_number": 2, "scriptSegment": "Scene two text"},
+        ]
+
+        with patch("app.pipelines.stage_handlers.get_tts_provider_async", return_value=mock_tts):
+            res = await handle_voiceover_stage("test_multi_job", scenes, project_id="test_multi_proj")
+            
+            assert "master_audio_url" in res
+            assert res["master_audio_url"] is not None
+            assert os.path.exists(res["master_audio_url"])
+            assert len(res["voiceovers"]) == 2
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+

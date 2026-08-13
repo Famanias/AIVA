@@ -1,58 +1,27 @@
-# Walkthrough — Milestone 7: Clean-Clone End-to-End Verification & Working V1 Completion
+# AIVA V1 Remediation Walkthrough
 
-## Summary of Completed Work
+## Phase 1: Master Voice Concatenation & Multi-Scene Audio Delivery
 
-Milestone 7 delivers the final certification for the AIVA Working Version 1 platform:
-- **Comprehensive Pipeline Certification Suite**: Replaced mock stubs in [`scripts/certify_pipeline.ts`](file:///d:/repos/AIVA/scripts/certify_pipeline.ts) with real end-to-end tests covering:
-  1. Local PostgreSQL connection health and parameterized query validation.
-  2. Topic brief generation with multi-scene breakdown and visual asset tagging (`character_animation`, `broll`).
-  3. Custom script direct bypass routing to `script_direction` without intermediate research/outline.
-  4. Selective single-scene timeline re-render and version synchronization.
-  5. Ambient audio file verification for sidechain audio ducking.
-- **Automated Validation Report**: Generates [`.artifacts/validation_report.md`](file:///d:/repos/AIVA/.artifacts/validation_report.md) with exact execution metrics.
-- **Monorepo Build**: 100% clean builds across `@aiva/database`, `@aiva/prompt-library`, `@aiva/shared-types`, `aiva-template-renderer`, and `web`.
-- **Python Workers Suite**: 10/10 tests passed in `apps/workers`.
+### Summary of Changes
+- **`apps/workers/app/pipelines/stage_handlers.py`**: Added multi-scene TTS voiceover concatenation. In `handle_voiceover_stage`, all synthesized scene `.mp3` files are stitched via FFmpeg concat protocol into a unified `master_voice.mp3` stored under `storage/projects/{project_id}/`.
+- **`apps/workers/app/routers/pipeline.py`**: Passed `project_id` from `VoiceoverStageRequest` into `handle_voiceover_stage`.
+- **`apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts`**: Updated state synchronization to store `response.data.master_audio_url` in `state.voice.audioUrl` and `state.voice.master_audio_url`.
+- **`apps/web/src/services/pipeline/handlers/CompositionHandler.ts`**: Updated `voiceUrl` resolution to prefer `master_audio_url` so the final video composition plays the concatenated narration for all scenes.
+- **`apps/workers/tests/test_composition_ducking.py`**: Added unit test `test_handle_voiceover_stage_multi_scene_concatenation` verifying master audio generation.
 
----
+### Files Modified
+- [`apps/workers/app/pipelines/stage_handlers.py`](file:///d:/repos/AIVA/apps/workers/app/pipelines/stage_handlers.py)
+- [`apps/workers/app/routers/pipeline.py`](file:///d:/repos/AIVA/apps/workers/app/routers/pipeline.py)
+- [`apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts)
+- [`apps/web/src/services/pipeline/handlers/CompositionHandler.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts)
+- [`apps/workers/tests/test_composition_ducking.py`](file:///d:/repos/AIVA/apps/workers/tests/test_composition_ducking.py)
 
-## 4 Core Capabilities Delivered in Working V1
+### Automated Verification Results
+- **Worker Unit Tests**: `venv\Scripts\python.exe -m pytest tests/ -v` -> 11/11 passed (100%).
+- **TypeScript Typecheck**: `pnpm --filter web exec tsc --noEmit` -> 0 errors.
 
-1. **Step 1: Brief Intake**: Type a topic OR paste your custom script. Choose format (9:16), duration, persona, and voice.
-2. **Step 2: AI Story Breakdown**: Generates full script + scene-by-scene breakdown tagged for stock B-roll or AI/character animation, persisted to `public.scenes` & `public.scene_versions`.
-3. **Step 3: Parallel Scene Synthesis**: Generates scene TTS audio concurrently with real word timings, burns/exports SRT subtitles, and ducks background ambient music under narration.
-4. **Step 4: Master Assembly & Single-Scene Re-render**: Assembles the master video and enables timeline editing where modifying one scene re-renders only that scene while reusing cached unchanged clips.
-
----
-
-## Verification Results
-
-| Verification Item | Command | Result |
-|---|---|---|
-| **Pipeline Certifier** | `pnpm test:pipeline` | ✅ Exit 0 — All 4 test suites passed |
-| **Monorepo Turbo Build** | `pnpm build` | ✅ Exit 0 — 4/4 packages built cleanly |
-| **Python Worker Tests** | `venv\Scripts\python -m pytest tests/ -v` | ✅ Exit 0 — 10/10 passed |
-| **TypeScript Typecheck** | `pnpm --filter web exec tsc --noEmit` | ✅ Exit 0 — 0 errors |
-
----
-
-## Manual QA Instructions
-
-To run the complete certification locally:
-
-```powershell
-# 1. Run Pipeline Certifier
-pnpm test:pipeline
-
-# 2. Run Python Worker Test Suite
-cd apps/workers
-venv\Scripts\python -m pytest tests/ -v
-cd ../..
-
-# 3. Run Monorepo Build
-pnpm build
-```
-
-### Expected Results
-- `pnpm test:pipeline` prints `Certification Result: ✅ ALL TESTS PASSED` and writes [`.artifacts/validation_report.md`](file:///d:/repos/AIVA/.artifacts/validation_report.md).
-- Pytest prints `10 passed in 1.05s`.
-- Turbo build prints `4 successful, 4 total`.
+### Manual QA Validation Steps
+1. Create a multi-scene project (e.g. 2+ scenes).
+2. Trigger the voiceover and composition stages.
+3. Inspect `storage/projects/{project_id}/master_voice.mp3` and confirm it contains the full spoken narration across every scene in sequence.
+4. Play the generated `storage/projects/{project_id}/composition.mp4` and verify that speech audio continues past Scene 1 through the entire duration of the video.

@@ -125,6 +125,7 @@ async def run_voiceover(req: VoiceoverStageRequest) -> dict[str, Any]:
             job_id=req.trace_id,
             scenes=req.scenes,
             voice_id=req.voice_id,
+            project_id=req.project_id,
         )
         return {"status": "success", "data": result}
     except Exception as e:

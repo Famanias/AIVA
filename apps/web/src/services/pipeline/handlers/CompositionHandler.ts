@@ -37,7 +37,7 @@ export class CompositionHandler extends BaseHandler {
       mime_type: t.mime_type || (t.type === 'image' ? 'image/jpeg' : 'video/mp4')
     }))
 
-    const voiceUrl = voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || null
+    const voiceUrl = voice.master_audio_url || voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || null
 
     const profile = context.generationProfile || (context.state as any)?.generationProfile || (context.project as any)?.generation_profile || {}
     const aspectRatio = profile.aspect_ratio || profile.target_aspect_ratio || '9:16'

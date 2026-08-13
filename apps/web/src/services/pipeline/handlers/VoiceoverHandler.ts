@@ -38,8 +38,9 @@ export class VoiceoverHandler extends BaseHandler {
 
     if (response.data.voiceovers && Array.isArray(response.data.voiceovers)) {
       updatedState.voice.scene_voiceovers = response.data.voiceovers
-      // Just take the first one for logging if needed
-      updatedState.voice.audioUrl = response.data.voiceovers[0]?.audio_url
+      // Set audioUrl to the full multi-scene master voice track
+      updatedState.voice.audioUrl = response.data.master_audio_url || response.data.voiceovers[0]?.audio_url
+      updatedState.voice.master_audio_url = response.data.master_audio_url || response.data.voiceovers[0]?.audio_url
 
       // Update voiceover_url and duration on public.scenes in PostgreSQL
       for (const [idx, vo] of response.data.voiceovers.entries()) {

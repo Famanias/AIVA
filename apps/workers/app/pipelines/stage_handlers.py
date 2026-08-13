@@ -1,4 +1,7 @@
 # pyrefly: ignore [missing-import]
+import os
+import shutil
+import subprocess
 from typing import Any
 import structlog
 
@@ -164,15 +167,63 @@ async def handle_voiceover_stage(
     job_id: str,
     scenes: list[dict],
     voice_id: str = "en-US-AriaNeural",
+    project_id: str | None = None,
 ) -> dict:
-    """Executes the Voiceover Agent."""
+    """Executes the Voiceover Agent and stitches the master voice track."""
     LifecycleService.throw_if_cancelled(job_id)
     tts = await get_tts_provider_async()
     agent = VoiceoverAgent(tts)
     
     outputs: list[VoiceoverOutput] = await agent.run(scenes, voice_id)
     
+    master_audio_url = None
+    if outputs:
+        valid_project_id = project_id or job_id
+        project_storage_dir = os.path.abspath(os.path.join(os.getcwd(), "storage", "projects", valid_project_id))
+        if not os.path.exists(os.path.dirname(project_storage_dir)):
+            project_storage_dir = os.path.abspath(os.path.join(os.getcwd(), "..", "..", "storage", "projects", valid_project_id))
+        os.makedirs(project_storage_dir, exist_ok=True)
+        master_voice_file = os.path.join(project_storage_dir, "master_voice.mp3")
+
+        if len(outputs) == 1:
+            try:
+                shutil.copy2(outputs[0].audio_url, master_voice_file)
+                master_audio_url = master_voice_file
+            except Exception as e:
+                logger.warning("failed_to_copy_single_voice_to_master", error=str(e))
+                master_audio_url = outputs[0].audio_url
+        else:
+            ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+            concat_list_file = os.path.join(project_storage_dir, "voice_concat.txt")
+            try:
+                with open(concat_list_file, "w", encoding="utf-8") as f:
+                    for o in outputs:
+                        safe_path = o.audio_url.replace("\\", "/")
+                        f.write(f"file '{safe_path}'\n")
+                
+                res = subprocess.run(
+                    [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c", "copy", master_voice_file],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                if res.returncode != 0:
+                    subprocess.run(
+                        [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c:a", "libmp3lame", master_voice_file],
+                        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                    )
+                master_audio_url = master_voice_file
+                logger.info("master_voice_concatenated", master_path=master_voice_file, scenes_count=len(outputs))
+            except Exception as e:
+                logger.warning("failed_to_concatenate_master_voice", error=str(e))
+                master_audio_url = outputs[0].audio_url
+            finally:
+                if os.path.exists(concat_list_file):
+                    try:
+                        os.remove(concat_list_file)
+                    except Exception:
+                        pass
+
     result = {
+        "master_audio_url": master_audio_url,
         "voiceovers": [
             {
                 "sequence_number": o.scene_number,
