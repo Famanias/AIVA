@@ -31,6 +31,15 @@ function maskApiKey(key: string | null): string {
   return `${key.slice(0, 4)}••••••••${key.slice(-4)}`;
 }
 
+const DEFAULT_SETTINGS: Record<string, string> = {
+  llm_provider: "gemini",
+  tts_provider: "edge_tts",
+  image_provider: "sdxl",
+  broll_provider: "pexels",
+  ollama_base_url: "http://localhost:11434",
+  ollama_model: "llama3.1:8b",
+};
+
 export async function GET() {
   try {
     const settings: Record<string, string> = {};
@@ -41,7 +50,7 @@ export async function GET() {
         settings[key] = maskApiKey(val);
         settings[`${key}_configured`] = Boolean(val && val.length > 0) ? "true" : "false";
       } else {
-        settings[key] = val || "";
+        settings[key] = val || DEFAULT_SETTINGS[key] || "";
       }
     }
 

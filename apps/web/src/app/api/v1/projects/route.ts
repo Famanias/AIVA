@@ -33,7 +33,9 @@ export async function POST(req: Request) {
       if (userRes.rows.length > 0) {
         userId = userRes.rows[0].id;
       }
-    } catch {}
+    } catch (userErr: any) {
+      console.warn('[Project Route] Default user lookup note:', userErr.message);
+    }
 
     // 1. Insert Project into PostgreSQL
     const projectRes = await query(

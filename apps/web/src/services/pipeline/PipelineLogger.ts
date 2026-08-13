@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@aiva/shared-types'
+import { query } from '@aiva/database'
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
@@ -20,19 +19,11 @@ export interface IPipelineLogger {
 }
 
 export class PipelineLogger implements IPipelineLogger {
-  private db: ReturnType<typeof createClient<Database>>
-  
   constructor(
     private jobId: string, 
     private stage: string | undefined, 
-    private source: string = 'orchestrator',
-    dbClient?: ReturnType<typeof createClient<Database>>
-  ) {
-    this.db = dbClient || createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-  }
+    private source: string = 'orchestrator'
+  ) {}
 
   // Allow updating stage as pipeline progresses
   setStage(stage: string) {
@@ -41,7 +32,7 @@ export class PipelineLogger implements IPipelineLogger {
 
   // Allow spawning a sub-logger for specific sources like workers
   withSource(source: string): PipelineLogger {
-    return new PipelineLogger(this.jobId, this.stage, source, this.db)
+    return new PipelineLogger(this.jobId, this.stage, source)
   }
 
   private async log(level: LogLevel, message: string, metadata: Record<string, any> = {}) {
@@ -52,18 +43,15 @@ export class PipelineLogger implements IPipelineLogger {
       console.log(`[${this.source}] [${this.stage || 'init'}] ${level.toUpperCase()}: ${message}`)
     }
 
-    // Persist to Supabase
+    // Persist to PostgreSQL
     try {
-      await this.db.from('pipeline_logs').insert({
-        job_id: this.jobId,
-        stage: this.stage as any,
-        level,
-        source: this.source,
-        message,
-        metadata
-      })
-    } catch (e) {
-      console.error(`Failed to persist pipeline log:`, e)
+      await query(
+        `INSERT INTO public.pipeline_logs (job_id, stage, level, source, message, metadata, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [this.jobId, this.stage || null, level, this.source, message, JSON.stringify(metadata)]
+      )
+    } catch (e: any) {
+      console.error(`Failed to persist pipeline log:`, e?.message || e)
     }
   }
 
@@ -90,3 +78,4 @@ export class PipelineLogger implements IPipelineLogger {
     await this.log('error', message, errorMetadata)
   }
 }
+

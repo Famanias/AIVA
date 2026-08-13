@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { Database } from '@aiva/shared-types'
-import { SupabaseClient } from '@supabase/supabase-js'
+import { IPipelineLogger } from './PipelineLogger'
 
 /**
  * Strict schema for the job's state_payload JSON.
@@ -19,17 +19,16 @@ export const PipelineStateSchema = z.object({
 
 export type PipelineState = z.infer<typeof PipelineStateSchema>
 
-import { IPipelineLogger } from './PipelineLogger'
-
 /**
  * The unified context object passed to every stage handler in the pipeline.
  * Contains everything a handler needs to execute its isolated task.
  */
 export interface PipelineContext {
-  project: Database['public']['Tables']['projects']['Row']
-  job: Database['public']['Tables']['jobs']['Row']
+  project: Database['public']['Tables']['projects']['Row'] | any
+  job: Database['public']['Tables']['jobs']['Row'] | any
   state: PipelineState
   logger: IPipelineLogger
   config: Record<string, any>
-  db: SupabaseClient<Database>
+  db?: any
 }
+

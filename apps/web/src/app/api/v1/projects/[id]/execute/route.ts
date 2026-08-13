@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { query } from '@aiva/database'
 import { QueueService } from '../../../../../../services/queue.service'
+import fs from 'fs'
+import path from 'path'
 
 export async function POST(
   req: Request,
@@ -10,115 +10,78 @@ export async function POST(
 ) {
   try {
     const { id: projectId } = await params
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-            } catch {
-              // Ignore inside route handlers
-            }
-          },
-        },
-      }
-    )
-
-    const authHeader = req.headers.get('authorization')
-    const isDev = process.env.NODE_ENV === 'development'
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (!isDev && (authError || !user) && !authHeader) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const adminSupabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
     const body = await req.json().catch(() => ({}))
     const { start_step = 'rendering', override_config = {} } = body
 
     // 1. Fetch active Job for Project
-    let { data: job } = await adminSupabase
-      .from('jobs')
-      .select('*')
-      .eq('project_id', projectId)
-      .maybeSingle()
+    const jobRes = await query(
+      `SELECT * FROM public.jobs WHERE project_id = $1 LIMIT 1`,
+      [projectId]
+    )
+
+    let job = jobRes.rows[0]
 
     if (!job) {
       // Auto-create project and job if executing a sample or new artifact package
-      let { data: project } = await adminSupabase
-        .from('projects')
-        .select('*')
-        .eq('id', projectId)
-        .maybeSingle()
+      const projRes = await query(
+        `SELECT * FROM public.projects WHERE id = $1 LIMIT 1`,
+        [projectId]
+      )
+      let project = projRes.rows[0]
 
       if (!project) {
-        const { data: newProject, error: pErr } = await adminSupabase
-          .from('projects')
-          .insert({
-            id: projectId,
-            title: `Sample Video (${projectId})`,
-            topic: "The Story of Homer's Odyssey",
-            video_style: 'stickman_animation',
-            status: 'queued',
-            user_id: user?.id || 'e55f2c0d-c4f4-4218-b711-2dd2d71d06df'
-          })
-          .select()
-          .single()
-        if (pErr) throw pErr
-        project = newProject
+        let userId = '00000000-0000-0000-0000-000000000000'
+        try {
+          const userRes = await query(`SELECT id FROM auth.users LIMIT 1`)
+          if (userRes.rows.length > 0) {
+            userId = userRes.rows[0].id
+          }
+        } catch (e: any) {
+          console.warn('[Execute Route] User lookup fallback:', e.message)
+        }
+
+        const insertProj = await query(
+          `INSERT INTO public.projects (
+            id, user_id, title, topic, video_style, status, duration_target_minutes, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, 'queued', 1, NOW(), NOW())
+          RETURNING *`,
+          [projectId, userId, `Sample Video (${projectId})`, "The Story of Homer's Odyssey", 'stickman_animation']
+        )
+        project = insertProj.rows[0]
       }
 
       // Read sample artifact state payload
-      const fs = await import('fs')
-      const path = await import('path')
       const samplePath = path.join(process.cwd(), '../workers/sample_project_artifact.json')
       let samplePayload = {}
       if (fs.existsSync(samplePath)) {
         try {
           const raw = fs.readFileSync(samplePath, 'utf-8')
           samplePayload = JSON.parse(raw).artifacts || {}
-        } catch (e) {
-          console.warn('Could not read sample artifact json:', e)
+        } catch (e: any) {
+          console.warn('[Execute Route] Could not read sample artifact json:', e.message)
         }
       }
 
-      const { data: newJob, error: jErr } = await adminSupabase
-        .from('jobs')
-        .insert({
-          project_id: projectId,
-          current_step: start_step,
-          progress: 50,
-          state_payload: samplePayload
-        })
-        .select()
-        .single()
-      if (jErr) throw jErr
-      job = newJob
+      const insertJob = await query(
+        `INSERT INTO public.jobs (
+          project_id, current_step, progress, state_payload, created_at, updated_at
+        ) VALUES ($1, $2, 50, $3, NOW(), NOW())
+        RETURNING *`,
+        [projectId, start_step, JSON.stringify(samplePayload)]
+      )
+      job = insertJob.rows[0]
     }
 
     // 2. Update job current_step & project status
-    await adminSupabase
-      .from('projects')
-      .update({ status: 'queued', updated_at: new Date().toISOString() })
-      .eq('id', projectId)
+    await query(
+      `UPDATE public.projects SET status = 'queued', updated_at = NOW() WHERE id = $1`,
+      [projectId]
+    )
 
-    await adminSupabase
-      .from('jobs')
-      .update({
-        current_step: start_step,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', job.id)
+    await query(
+      `UPDATE public.jobs SET current_step = $1, updated_at = NOW() WHERE id = $2`,
+      [start_step, job.id]
+    )
 
     // 3. Enqueue job at start_step
     await QueueService.enqueuePipelineJob(job.id, start_step, 0)
@@ -130,6 +93,8 @@ export async function POST(
     }, { status: 200 })
 
   } catch (err: any) {
+    console.error('[Execute Route] Error:', err)
     return NextResponse.json({ error: err.message }, { status: 500 })
   }
 }
+

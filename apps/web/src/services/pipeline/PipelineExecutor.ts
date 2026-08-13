@@ -1,10 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@aiva/shared-types'
+import { query } from '@aiva/database'
 import { PipelineContext, PipelineStateSchema } from './PipelineContext'
 import { stageRegistry } from './StageRegistry'
 import { QueueService } from '../queue.service'
 import { LifecycleService, CancellationError, PauseError } from './LifecycleService'
-
 import { PipelineLogger } from './PipelineLogger'
 
 /**
@@ -12,30 +10,24 @@ import { PipelineLogger } from './PipelineLogger'
  * It is completely decoupled from BullMQ. It only receives a jobId.
  */
 export class PipelineExecutor {
-  private db: ReturnType<typeof createClient<Database>>
-
-  constructor() {
-    this.db = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY! // We need service role to bypass RLS for background jobs
-    )
-  }
-
   async executeJob(jobId: string): Promise<void> {
     console.log(`[PipelineExecutor] Executing Job: ${jobId}`)
 
     // 1. Fetch Job and Project
-    const { data: job, error: jobError } = await this.db
-      .from('jobs')
-      .select('*, projects(*)')
-      .eq('id', jobId)
-      .single()
+    const res = await query(
+      `SELECT j.*, row_to_json(p.*) AS project 
+       FROM public.jobs j 
+       JOIN public.projects p ON j.project_id = p.id 
+       WHERE j.id = $1 LIMIT 1`,
+      [jobId]
+    )
 
-    if (jobError || !job) {
-      throw new Error(`Failed to fetch job ${jobId}: ${jobError?.message}`)
+    if (res.rows.length === 0) {
+      throw new Error(`Failed to fetch job ${jobId}: not found`)
     }
 
-    const project = Array.isArray(job.projects) ? job.projects[0] : job.projects
+    const job = res.rows[0]
+    const project = job.project
     if (!project) {
       throw new Error(`Job ${jobId} has no associated project.`)
     }
@@ -52,14 +44,13 @@ export class PipelineExecutor {
     // 2. Parse existing state cleanly using Zod (Idempotency protection)
     const state = PipelineStateSchema.parse(job.state_payload || {})
 
-    const logger = new PipelineLogger(jobId, currentStep, 'orchestrator', this.db)
+    const logger = new PipelineLogger(jobId, currentStep, 'orchestrator')
 
     // 3. Build the Context
     const context: PipelineContext = {
       project,
       job,
       state,
-      db: this.db,
       config: {},
       logger
     }
@@ -76,25 +67,21 @@ export class PipelineExecutor {
       // 6. Persist State and Transition
       const safeState = PipelineStateSchema.parse(context.state)
 
-      const updatePayload: any = {
-        state_payload: safeState as any,
-        updated_at: new Date().toISOString()
-      }
-
       if (nextStep) {
-        updatePayload.current_step = nextStep
-        updatePayload.progress = this.calculateProgress(nextStep)
+        const progress = this.calculateProgress(nextStep)
+        await query(
+          `UPDATE public.jobs 
+           SET state_payload = $1, current_step = $2, progress = $3, updated_at = NOW() 
+           WHERE id = $4`,
+          [JSON.stringify(safeState), nextStep, progress, jobId]
+        )
       } else {
-        updatePayload.progress = 100
-      }
-
-      const { error: updateError } = await this.db
-        .from('jobs')
-        .update(updatePayload)
-        .eq('id', jobId)
-
-      if (updateError) {
-        throw new Error(`Failed to persist state: ${updateError.message}`)
+        await query(
+          `UPDATE public.jobs 
+           SET state_payload = $1, progress = 100, updated_at = NOW() 
+           WHERE id = $2`,
+          [JSON.stringify(safeState), jobId]
+        )
       }
 
       // Final cancellation check before advancing
@@ -106,7 +93,10 @@ export class PipelineExecutor {
       if (nextStep) {
         await QueueService.enqueuePipelineJob(jobId, nextStep)
       } else {
-        await this.db.from('projects').update({ status: 'completed' }).eq('id', project.id)
+        await query(
+          `UPDATE public.projects SET status = 'completed', updated_at = NOW() WHERE id = $1`,
+          [project.id]
+        )
       }
 
     } catch (error: any) {
@@ -119,8 +109,14 @@ export class PipelineExecutor {
         await this.logCancellationEvent(jobId, 'cleanup_finished', currentStep, 'Resources released.')
 
         // Final transition
-        await this.db.from('jobs').update({ current_step: 'cancelled' }).eq('id', jobId)
-        await this.db.from('projects').update({ status: 'cancelled' }).eq('id', project.id)
+        await query(
+          `UPDATE public.jobs SET current_step = 'cancelled', updated_at = NOW() WHERE id = $1`,
+          [jobId]
+        )
+        await query(
+          `UPDATE public.projects SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+          [project.id]
+        )
 
         await this.logCancellationEvent(jobId, 'cancelled', currentStep, 'Pipeline terminated successfully.')
         return
@@ -130,7 +126,10 @@ export class PipelineExecutor {
         await context.logger.info(`Pause requested by operator. Pipeline is yielding...`)
 
         // Final transition
-        await this.db.from('projects').update({ status: 'paused' }).eq('id', project.id)
+        await query(
+          `UPDATE public.projects SET status = 'paused', updated_at = NOW() WHERE id = $1`,
+          [project.id]
+        )
 
         await this.logEvent(jobId, 'finished', currentStep, 'Pipeline paused successfully.')
         return
@@ -142,21 +141,27 @@ export class PipelineExecutor {
   }
 
   private async logEvent(jobId: string, eventType: 'started' | 'finished' | 'failed' | 'retrying', step: any, message: string) {
-    await this.db.from('job_events').insert({
-      job_id: jobId,
-      event_type: eventType,
-      job_step: step,
-      message
-    })
+    try {
+      await query(
+        `INSERT INTO public.job_events (job_id, event_type, job_step, message, created_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [jobId, eventType, step, message]
+      )
+    } catch (err: any) {
+      console.error('[PipelineExecutor] Failed to insert job event:', err.message)
+    }
   }
 
   private async logCancellationEvent(jobId: string, eventType: string, step: any, message: string) {
-    await this.db.from('job_events').insert({
-      job_id: jobId,
-      event_type: eventType as any,
-      job_step: step,
-      message
-    })
+    try {
+      await query(
+        `INSERT INTO public.job_events (job_id, event_type, job_step, message, created_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [jobId, eventType, step, message]
+      )
+    } catch (err: any) {
+      console.error('[PipelineExecutor] Failed to insert cancellation event:', err.message)
+    }
   }
 
   private calculateProgress(step: string): number {
@@ -170,3 +175,4 @@ export class PipelineExecutor {
     return index > -1 ? Math.round((index / sequence.length) * 100) : 0
   }
 }
+

@@ -25,10 +25,20 @@ export async function POST(req: Request) {
       }
     )
 
-    // Ensure user is authenticated
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Authenticate user with local fallback
+    let userId = '00000000-0000-0000-0000-000000000000'
+    const isDev = process.env.NODE_ENV === 'development' || !process.env.NEXT_PUBLIC_SUPABASE_URL
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (user) {
+        userId = user.id
+      } else if (!isDev) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+    } catch {
+      if (!isDev) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
     }
 
     const body = await req.json()
@@ -38,17 +48,17 @@ export async function POST(req: Request) {
       if (!jobId || !projectId) {
         return NextResponse.json({ error: 'Missing jobId or projectId' }, { status: 400 })
       }
-      await QueueControlService.stopJob(jobId, projectId, user.id)
+      await QueueControlService.stopJob(jobId, projectId, userId)
     } else if (action === 'selected') {
       if (!jobIds || !Array.isArray(jobIds)) {
         return NextResponse.json({ error: 'Missing or invalid jobIds array' }, { status: 400 })
       }
-      await QueueControlService.stopSelected(jobIds, user.id)
+      await QueueControlService.stopSelected(jobIds, userId)
     } else if (action === 'all') {
       if (!filter || !['queued', 'processing', 'all'].includes(filter)) {
         return NextResponse.json({ error: 'Missing or invalid filter' }, { status: 400 })
       }
-      await QueueControlService.stopAll(filter, user.id)
+      await QueueControlService.stopAll(filter, userId)
     } else {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }

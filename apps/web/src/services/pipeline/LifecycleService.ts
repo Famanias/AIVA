@@ -1,5 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
-import { Database } from '@aiva/shared-types'
+import { query } from '@aiva/database'
 
 export class CancellationError extends Error {
   constructor(message: string) {
@@ -27,24 +26,23 @@ export class LifecycleService {
       return { isCancelled: cached.isCancelled, isPaused: cached.isPaused }
     }
 
-    const adminSupabase = createClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
+    try {
+      const res = await query(
+        `SELECT cancel_requested_at, pause_requested_at FROM public.jobs WHERE id = $1 LIMIT 1`,
+        [jobId]
+      )
 
-    const { data, error } = await adminSupabase
-      .from('jobs')
-      .select('cancel_requested_at, pause_requested_at')
-      .eq('id', jobId)
-      .single()
+      const jobData = res.rows[0]
+      const isCancelled = jobData && jobData.cancel_requested_at != null
+      const isPaused = jobData && jobData.pause_requested_at != null
 
-    const jobData = data as any
-    const isCancelled = !error && jobData && jobData.cancel_requested_at != null
-    const isPaused = !error && jobData && jobData.pause_requested_at != null
-
-    this.cache.set(jobId, { isCancelled, isPaused, expiresAt: now + this.CACHE_TTL_MS })
-    
-    return { isCancelled, isPaused }
+      this.cache.set(jobId, { isCancelled: !!isCancelled, isPaused: !!isPaused, expiresAt: now + this.CACHE_TTL_MS })
+      
+      return { isCancelled: !!isCancelled, isPaused: !!isPaused }
+    } catch (err: any) {
+      console.error('[LifecycleService] Failed to query lifecycle state:', err.message)
+      return { isCancelled: false, isPaused: false }
+    }
   }
 
   static async throwIfCancelledOrPaused(jobId: string): Promise<void> {
@@ -59,3 +57,4 @@ export class LifecycleService {
     }
   }
 }
+

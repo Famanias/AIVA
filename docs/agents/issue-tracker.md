@@ -1,22 +1,23 @@
 # Issue Tracker Configuration
 
-- **Type**: GitHub Issues
-- **Repository**: `Famanias/AIVA`
-- **CLI Tool**: `gh`
+- **Type**: Local Markdown
+- **Location**: `.scratch/`
+- **CLI Tool**: none
 - **PRs as request surface**: false
 
-## Agent Rules
+## Conventions
 
-1. **Reading Issues**:
-   - List open issues: `gh issue list`
-   - View specific issue details: `gh issue view <issue-number>`
-   - View comments: `gh issue view <issue-number> --comments`
+- One feature per directory: `.scratch/<feature-slug>/`
+- The spec is `.scratch/<feature-slug>/spec.md`
+- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01`
+- Triage state is recorded as a `Status:` line near the top of each issue file
+- Comments and conversation history append to the bottom of the file under a `## Comments` heading
 
-2. **Creating & Updating Issues**:
-   - Create issue: `gh issue create --title "<title>" --body "<body>"`
-   - Add comment: `gh issue comment <issue-number> --body "<body>"`
-   - Close issue: `gh issue close <issue-number>`
+## Wayfinding operations
 
-3. **Constraints**:
-   - Always verify issue state before modifying.
-   - Do not create duplicate issues for known tasks.
+- **Map**: `.scratch/<effort>/map.md`
+- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`
+- **Blocking**: `Blocked by: NN, NN` line near top
+- **Claim**: `Status: claimed`
+- **Resolve**: `Status: resolved` under `## Answer`
+
