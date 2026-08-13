@@ -253,5 +253,59 @@ $env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\python.exe -c "from 
 Visit `http://localhost:3000/api/v1/storage/projects/test-proj/subtitles.srt?download=true` in your browser.
 **Expected Result:** Browser triggers a file download containing the `.srt` subtitle content.
 
+---
+
+## Phase 5: Scene Re-rendering Infrastructure & Queue Listener Wiring
+
+### What Was Implemented
+1. **Scene Re-rendering Worker Endpoint (`apps/workers/app/routers/pipeline.py`)**:
+   - Added `/pipeline/rerender_scene` POST endpoint to Python worker API.
+   - Delegates request parameters (`project_id`, `scene_id`, `revision`) to `rerender_single_scene()`, updating PostgreSQL `scenes` and `scene_versions` checkpoint state.
+
+2. **Web API Worker Dispatch (`apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts`)**:
+   - Updated scene rerender endpoint to update `scene_versions` in PostgreSQL and trigger worker re-render execution via `WORKER_API_URL`.
+
+---
+
+### Files & Components Changed
+- `[MODIFY]` [`apps/workers/app/routers/pipeline.py`](file:///d:/repos/AIVA/apps/workers/app/routers/pipeline.py) — Added `SceneRerenderRequest` and `/rerender_scene` route.
+- `[MODIFY]` [`apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/%5Bid%5D/scenes/%5Bscene_id%5D/rerender/route.ts) — Added async worker API dispatch call.
+
+---
+
+### Automated Verification Performed
+
+1. **Web API Unit Tests**:
+   ```bash
+   pnpm --filter web test
+   ```
+   **Result:** ✅ PASSED.
+
+2. **Python Worker Tests**:
+   ```bash
+   .\apps\workers\venv\Scripts\python.exe -m pytest apps/workers/tests/test_phase3.py
+   ```
+   **Result:** ✅ PASSED (3 passed in 0.34s).
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 5 on your machine, follow these steps:
+
+#### Step 1: Start Python Workers & Web Server
+Run:
+```powershell
+$env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\uvicorn.exe app.main:app --host 0.0.0.0 --port 8000
+```
+
+#### Step 2: Trigger Scene Re-rendering API
+Send a POST request to trigger scene re-rendering:
+```powershell
+Invoke-RestMethod -Uri "http://localhost:8000/pipeline/rerender_scene" -Method POST -ContentType "application/json" -Body '{"trace_id":"00000000-0000-0000-0000-000000000001","project_id":"00000000-0000-0000-0000-000000000001","scene_id":"00000000-0000-0000-0000-000000000002","revision":1}'
+```
+**Expected Result:** Returns `{"status":"success","data":{...}}` with updated scene status.
+
+
 
 

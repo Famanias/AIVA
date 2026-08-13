@@ -143,3 +143,25 @@ async def run_subtitle_extraction(req: SubtitleStageRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         clear_trace_id()
+
+
+class SceneRerenderRequest(BaseStageRequest):
+    scene_id: str
+    revision: int = 1
+
+
+@router.post("/rerender_scene")
+async def run_rerender_scene(req: SceneRerenderRequest) -> dict[str, Any]:
+    bind_trace_id(req.trace_id)
+    try:
+        from app.pipeline.rerender_scene import rerender_single_scene
+        result = await rerender_single_scene(
+            project_id=req.project_id,
+            scene_id=req.scene_id,
+            revision=req.revision,
+        )
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        clear_trace_id()

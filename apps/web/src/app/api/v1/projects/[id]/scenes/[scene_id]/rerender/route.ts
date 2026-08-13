@@ -39,6 +39,21 @@ export async function POST(
       [sceneId, projectId]
     );
 
+    // Dispatch worker scene re-render request
+    const workerUrl = process.env.WORKER_API_URL || "http://localhost:8000";
+    fetch(`${workerUrl}/pipeline/rerender_scene`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trace_id: projectId,
+        project_id: projectId,
+        scene_id: sceneId,
+        revision: 1,
+      }),
+    }).catch((err) =>
+      console.warn("[Rerender Route] Warning: Worker invocation async failed:", err.message)
+    );
+
     return NextResponse.json({
       status: "success",
       message: `Scene ${sceneId} queued for partial re-rendering`,

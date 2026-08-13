@@ -21,6 +21,20 @@ async def rerender_single_scene(
     4. Updates database scene status to 'completed'.
     """
     logger.info("🎬 [Single Scene Rerender START]", project_id=project_id, scene_id=scene_id)
+    
+    import uuid
+    try:
+        valid_scene_uuid = str(uuid.UUID(scene_id))
+        valid_project_uuid = str(uuid.UUID(project_id))
+    except ValueError:
+        logger.warning("Invalid UUID format provided for rerendering", scene_id=scene_id, project_id=project_id)
+        return {
+            "status": "not_found",
+            "project_id": project_id,
+            "scene_id": scene_id,
+            "message": f"Scene {scene_id} or project {project_id} is not a valid UUID format."
+        }
+
     pool = await get_db_pool()
 
     async with pool.acquire() as conn:
@@ -32,13 +46,18 @@ async def rerender_single_scene(
             LEFT JOIN public.scene_versions sv ON s.current_version_id = sv.id
             WHERE s.id = $1 AND s.project_id = $2
             """,
-            scene_id,
-            project_id
+            valid_scene_uuid,
+            valid_project_uuid
         )
 
         if not scene_row:
-            logger.error("Scene not found for rerendering", scene_id=scene_id, project_id=project_id)
-            raise ValueError(f"Scene {scene_id} not found for project {project_id}")
+            logger.warning("Scene not found for rerendering", scene_id=scene_id, project_id=project_id)
+            return {
+                "status": "not_found",
+                "project_id": project_id,
+                "scene_id": scene_id,
+                "message": f"Scene {scene_id} not found for project {project_id}"
+            }
 
         # 2. Check cached script checkpoint
         checkpoint_dir = get_checkpoint_dir(project_id, revision)
