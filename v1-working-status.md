@@ -39,7 +39,7 @@
 - **Offline LLM**: `OllamaProvider` for 100% local inference.
 
 ### Docker
-- **Workers image builds** (python:3.11-slim + FFmpeg + Whisper), **web image builds** (Next.js), and **template-renderer image builds** (pnpm + monorepo root context, chromium), with a 724 MB → 4.74 MB build context reduction.
+- **Workers image builds** (python:3.11-slim + FFmpeg + Whisper) and **template-renderer image builds** (pnpm + monorepo root context, chromium), with a 724 MB → 4.74 MB build context reduction. *(Web image build was disproven on a clean clone — see "Verified by Fresh-Clone Run" below.)*
 
 ---
 
@@ -50,7 +50,7 @@
 | Step 1 — Brief form | UI done, params saved to `state_payload` | **Nothing consumes them.** Voice is hardcoded (`en-US-AriaNeural`) in `VoiceoverHandler.ts`; persona never read; aspect ratio read from `generation_profile` which the route never sets. |
 | Step 2 — AI draft | Pipeline + live providers exist | Default `llm_provider=gemini` with empty key fails on a fresh clone; `custom_script` ignored (research always runs on the topic slug); scenes only live in `state_payload`, never written to `public.scenes` → timeline/rerender see no scenes on real runs. |
 | Step 4 — Downloads | Composition + SRT persisted and served | Nothing can be produced on a fresh clone due to the orchestration blocker, so there is nothing to download yet. |
-| Docker | All three images build | Worker `CMD` fixed; `@aiva/shared-types` `dist/` is gitignored with no prepare script → `web build` fails on a true clean checkout. |
+| Docker | Workers + template-renderer images build | Web image **fails** on a clean checkout: `@aiva/shared-types` `dist/` is gitignored with no prepare script (see verified run below). |
 
 ---
 
@@ -85,3 +85,40 @@
 4. **Make re-render real** — regenerate the edited scene's TTS/visual assets and re-assemble the final composition, keeping other scenes' checkpoints.
 5. **Step 3 (optional for a first usable cut):** parallel stage execution, real timed captions, and non-null music track for ducking.
 6. **Fix the build-on-clean-clone issue** (`@aiva/shared-types` dist) and restore auth on project creation.
+
+---
+
+## Verified by Fresh-Clone Run
+
+> Runtime verification performed 2026-08-13 in a genuinely clean clone (git clone of
+> `origin/pivot-to-selfhosting-localfirst`, no `.env`, `node_modules`, `dist/`, or stale
+> Docker images/volumes). Followed only the README's documented setup steps; nothing was
+> manually fixed. Error output is verbatim.
+
+| Step | Test | Result | Verbatim error |
+|---|---|---|---|
+| 1 | Clone + `pnpm bootstrap` | **PASS** | — (installs + runs `validate_migrations.mjs`, which spins up the Supabase emulator — contradicts the local-first pivot) |
+| 2 | `Copy-Item .env.example .env` | PASS | — |
+| 3a | `docker compose build workers` | **PASS** | exit 0 |
+| 3b | `docker compose build template-renderer` | **PASS** | exit 0 |
+| 3c | `docker compose build web` | **FAIL** | `Module not found: Can't resolve '@aiva/shared-types'` in `OutlineHandler.ts:4` and `ScriptHandler.ts:4` (import `SHORT_FORM_PROFILE`); `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL web@0.1.0 build: next build` — exit 1 |
+| 3d | `docker compose up -d` | **FAIL** | whole stack aborts at the web build — **no containers started** (workers/renderer images built but never launched) |
+| 4 | `pnpm dev` (README step 4) | **FAIL** | `web#dev: Cannot find module '@aiva/shared-types'` → `Failed: web#dev`; only `aiva-template-renderer:dev` started (port 3001) |
+| 5 | `pnpm certify` (README verification) | **STUB** | always writes `✅ PASS` — the report is hardcoded in `scripts/certify_pipeline.ts` (lines 29–56); no pipeline code executes |
+| 6 | E2E UI submission | **DIDN'T REACH** | blocked: the web app cannot boot from a fresh clone, so no job can be submitted or traced |
+
+### Root cause
+`packages/shared-types/package.json` sets `main`/`types` to `./dist/index.js`, `dist/` is gitignored
+(`.gitignore`), there is no `prepare` script, and neither `apps/web/Dockerfile` (`pnpm --filter web build`)
+nor the README builds `@aiva/shared-types` first. The web app has only ever run because a local
+`dist/` was built by hand and left behind (untracked), and stale Docker images reused it.
+
+### Impact on "Working V1"
+- The web app cannot be built or booted from source except on a machine that already has an
+  untracked `packages/shared-types/dist/` (i.e., not a fresh clone).
+- Workers image builds but still requires Supabase (`supabase_url Field required`) — observed
+  during the earlier stale-image boot test; both crash-loop without it.
+- Because the UI never comes up on a fresh clone, V1 Steps 1–4 could not be exercised end-to-end
+  at runtime; only their static review status above applies.
+- The README's own verification command (`pnpm certify`) is a stub that always reports PASS —
+  it cannot be used as evidence that the pipeline runs.
