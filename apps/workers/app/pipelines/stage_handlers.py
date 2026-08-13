@@ -2,7 +2,11 @@
 from typing import Any
 import structlog
 
-from app.providers.factory import get_llm_provider, get_search_provider, get_tts_provider
+from app.providers.factory import (
+    get_llm_provider_async,
+    get_search_provider_async,
+    get_tts_provider_async,
+)
 from app.agents.research_agent import ResearchAgent, ResearchOutput
 from app.agents.outline_agent import OutlineAgent, OutlineOutput
 from app.agents.script_director_agent import ScriptDirectorAgent, ScriptDirectorOutput
@@ -20,8 +24,8 @@ artifact_repo = ArtifactRepository()
 async def handle_research_stage(job_id: str, topic: str, language: str = "en") -> dict:
     """Executes the Research Agent."""
     LifecycleService.throw_if_cancelled(job_id)
-    llm = get_llm_provider()
-    search = get_search_provider()
+    llm = await get_llm_provider_async()
+    search = await get_search_provider_async()
     agent = ResearchAgent(llm, search)
 
     output: ResearchOutput = await agent.run(topic, language)
@@ -54,7 +58,7 @@ async def handle_outline_stage(
 ) -> dict:
     """Executes the Outline Agent."""
     LifecycleService.throw_if_cancelled(job_id)
-    llm = get_llm_provider()
+    llm = await get_llm_provider_async()
     agent = OutlineAgent(llm)
 
     output: OutlineOutput = await agent.run(
@@ -102,7 +106,7 @@ async def handle_script_direction_stage(
 ) -> dict:
     """Executes the combined Script + Director Agent."""
     LifecycleService.throw_if_cancelled(job_id)
-    llm = get_llm_provider()
+    llm = await get_llm_provider_async()
     agent = ScriptDirectorAgent(llm)
 
     outline_text = "\n".join(
@@ -157,7 +161,8 @@ async def handle_voiceover_stage(
 ) -> dict:
     """Executes the Voiceover Agent."""
     LifecycleService.throw_if_cancelled(job_id)
-    tts = get_tts_provider()
+    tts = await get_tts_provider_async()
+    agent = VoiceoverAgent(tts)
     agent = VoiceoverAgent(tts)
     
     outputs: list[VoiceoverOutput] = await agent.run(scenes, voice_id)

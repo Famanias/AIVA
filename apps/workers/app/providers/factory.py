@@ -26,20 +26,23 @@ async def get_llm_provider_async() -> ILLMProvider:
     if provider_name == "gemini":
         from app.providers.llm.gemini_provider import GeminiProvider
         api_key = (await get_app_setting("gemini_api_key")) or ""
-        logger.info("llm_provider_loaded", provider="gemini")
-        return GeminiProvider(api_key=api_key)
+        model = (await get_app_setting("gemini_model")) or "gemini-1.5-flash"
+        logger.info("llm_provider_loaded", provider="gemini", model=model)
+        return GeminiProvider(api_key=api_key, model=model)
 
     if provider_name == "groq":
         from app.providers.llm.groq_provider import GroqProvider
         api_key = (await get_app_setting("groq_api_key")) or ""
-        logger.info("llm_provider_loaded", provider="groq")
-        return GroqProvider(api_key=api_key)
+        model = (await get_app_setting("groq_model")) or "llama-3.3-70b-versatile"
+        logger.info("llm_provider_loaded", provider="groq", model=model)
+        return GroqProvider(api_key=api_key, model=model)
 
     if provider_name == "openrouter" or provider_name == "openai":
         from app.providers.llm.openrouter_provider import OpenRouterProvider
-        api_key = (await get_app_setting("openai_api_key")) or ""
-        logger.info("llm_provider_loaded", provider="openrouter")
-        return OpenRouterProvider(api_key=api_key)
+        api_key = (await get_app_setting("openrouter_api_key")) or (await get_app_setting("openai_api_key")) or ""
+        model = (await get_app_setting("openrouter_model")) or "google/gemini-flash-1.5"
+        logger.info("llm_provider_loaded", provider="openrouter", model=model)
+        return OpenRouterProvider(api_key=api_key, model=model)
 
     if provider_name == "ollama":
         from app.providers.llm.ollama_provider import OllamaProvider
@@ -50,7 +53,8 @@ async def get_llm_provider_async() -> ILLMProvider:
 
     # Fallback to Gemini
     from app.providers.llm.gemini_provider import GeminiProvider
-    return GeminiProvider(api_key="")
+    api_key = (await get_app_setting("gemini_api_key")) or ""
+    return GeminiProvider(api_key=api_key)
 
 
 @lru_cache
@@ -60,14 +64,17 @@ def get_llm_provider() -> ILLMProvider:
     if settings.llm_provider == "groq":
         from app.providers.llm.groq_provider import GroqProvider
         return GroqProvider(api_key=settings.groq_api_key, model=settings.groq_model)
+    if settings.llm_provider == "openrouter":
+        from app.providers.llm.openrouter_provider import OpenRouterProvider
+        return OpenRouterProvider(api_key=settings.openrouter_api_key, model=settings.openrouter_model)
     from app.providers.llm.gemini_provider import GeminiProvider
     return GeminiProvider(api_key=settings.gemini_api_key, model=settings.gemini_model)
 
 
 async def get_search_provider_async() -> ISearchProvider:
-    settings = get_settings()
+    api_key = (await get_app_setting("tavily_api_key")) or ""
     from app.providers.search.tavily_provider import TavilyProvider
-    return TavilyProvider(api_key=settings.tavily_api_key)
+    return TavilyProvider(api_key=api_key)
 
 
 @lru_cache
@@ -112,9 +119,10 @@ def get_stock_provider() -> IStockProvider:
 
 
 async def get_image_provider_async() -> IImageProvider:
-    token = (await get_app_setting("cloudflare_api_key")) or ""
+    token = (await get_app_setting("cloudflare_workers_ai_token")) or (await get_app_setting("cloudflare_api_key")) or ""
+    account_id = (await get_app_setting("cloudflare_account_id")) or ""
     from app.providers.image.cloudflare_provider import CloudflareImageProvider
-    return CloudflareImageProvider(account_id="", token=token)
+    return CloudflareImageProvider(account_id=account_id, token=token)
 
 
 @lru_cache

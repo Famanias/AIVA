@@ -24,6 +24,7 @@ export default function TimelineStudioPage() {
   const [projectTitle, setProjectTitle] = useState("Project Timeline");
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
+  const [rerenderingSceneId, setRerenderingSceneId] = useState<string | null>(null);
   const [editedText, setEditedText] = useState<{ [key: string]: string }>({});
   const [editedPrompt, setEditedPrompt] = useState<{ [key: string]: string }>({});
 

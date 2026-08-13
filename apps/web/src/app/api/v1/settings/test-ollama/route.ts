@@ -3,12 +3,29 @@ import { NextRequest, NextResponse } from "next/server";
 export async function POST(request: NextRequest) {
   try {
     const { ollama_base_url } = await request.json();
-    const baseUrl = ollama_base_url || "http://localhost:11434";
+    const rawUrl = ollama_base_url || "http://localhost:11434";
 
+    // Validate URL syntax and restrict protocol
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(rawUrl);
+      if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+        throw new Error("Invalid protocol. Only HTTP and HTTPS are permitted.");
+      }
+    } catch {
+      return NextResponse.json({
+        status: "error",
+        connected: false,
+        models: [],
+        message: "Invalid Ollama base URL format provided.",
+      });
+    }
+
+    const baseUrl = parsedUrl.origin;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/api/tags`, {
+    const res = await fetch(`${baseUrl}/api/tags`, {
       method: "GET",
       signal: controller.signal,
     });
