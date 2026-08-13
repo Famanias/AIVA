@@ -70,11 +70,10 @@ class FilterGraphBuilder:
             
         # Subtitle Burn-in
         if subtitle_path and video_out_pad:
-            # Escape the path for FFmpeg filter syntax
-            # FFmpeg requires escaping colons and backslashes on Windows
+            # Escape the path for FFmpeg filter syntax on Windows
             safe_sub_path = subtitle_path.replace('\\', '/').replace(':', '\\:')
-            # Apply subtitles filter
-            filters.append(f"{video_out_pad}subtitles={safe_sub_path}[v_subbed]")
+            # Apply subtitles filter with quoted filename
+            filters.append(f"{video_out_pad}subtitles='{safe_sub_path}'[v_subbed]")
             video_out_pad = "[v_subbed]"
             
         # Combine Audio and Video graphs

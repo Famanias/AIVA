@@ -21,6 +21,7 @@ A fully verified, fresh-clone operable Version 1 delivering all 4 core steps:
 - [02 Repair Monorepo Build and Shared Types Packaging](issues/02-repair-monorepo-build-and-shared-types.md) — Configured `prepare` script and Docker build steps for `@aiva/shared-types`, enabling clean clone builds without manual compilation.
 - [03 Wire Brief Parameters and Custom Script Bypass](issues/03-wire-brief-parameters-and-custom-script-bypass.md) — Enabled custom script pipeline direct routing to `script_direction`, and propagated `generationProfile` (`aspect_ratio`, `voice_id`, `duration_target_seconds`, `persona`) through context and stage handlers.
 - [04 Persist Scenes and Asset Tagging](issues/04-persist-scenes-and-asset-tagging.md) — Persisted generated scenes to `public.scenes` and `public.scene_versions` with normalized visual types and linked foreign keys for immediate Timeline Studio consumption.
+- [05 Implement Parallel Scene Synthesis, Captions and Ducked Audio](issues/05-implement-parallel-scene-synthesis-and-ducked-audio.md) — Enabled concurrent per-scene TTS, preserved real word timings for SRT and burned captions, and wired FFmpeg `sidechaincompress` auto-ducking for background music.
 
 
 

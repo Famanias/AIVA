@@ -28,9 +28,14 @@ export class SubtitleHandler extends BaseHandler {
     }
 
     const updatedState = { ...state }
-    
-    // Assign subtitles to state
+    if (!updatedState.voice) {
+      updatedState.voice = {}
+    }
+
+    // Assign subtitles and global word timings to state
     updatedState.voice.subtitles = response.data.subtitles
+    updatedState.voice.wordTimings = response.data.global_word_timings || []
+    updatedState.voice.word_timings = response.data.global_word_timings || []
 
     // Persist word timings to public.scenes in PostgreSQL
     if (Array.isArray(response.data.subtitles)) {

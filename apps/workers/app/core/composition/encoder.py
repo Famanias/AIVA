@@ -104,8 +104,19 @@ class Encoder:
             # We capture stderr because ffmpeg logs output to stderr
             result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         except subprocess.CalledProcessError as e:
-            print(f"[Encoder] FFmpeg Failed. Stderr:\n{e.stderr}")
-            raise RuntimeError(f"FFmpeg encoding failed: {e}")
+            if vcodec == "h264_nvenc":
+                print("[Encoder] NVENC encoding failed, retrying with CPU libx264...")
+                for i, arg in enumerate(cmd):
+                    if arg == "-c:v" and i + 1 < len(cmd):
+                        cmd[i + 1] = "libx264"
+                try:
+                    result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                except subprocess.CalledProcessError as err2:
+                    print(f"[Encoder] FFmpeg CPU fallback Failed. Stderr:\n{err2.stderr}")
+                    raise RuntimeError(f"FFmpeg encoding failed: {err2}")
+            else:
+                print(f"[Encoder] FFmpeg Failed. Stderr:\n{e.stderr}")
+                raise RuntimeError(f"FFmpeg encoding failed: {e}")
 
         # Emit Manifest
         manifest_path = output_path.replace(".mp4", "_manifest.json")

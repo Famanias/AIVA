@@ -1,7 +1,7 @@
 # 05 Implement Parallel Scene Synthesis, Captions and Ducked Audio
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 04
 
 ## Question
@@ -17,3 +17,11 @@ How do we implement parallel scene asset generation (concurrent TTS, stock asset
 1. Per-scene asset synthesis (TTS generation, stock/image fetching, Remotion clip rendering) runs concurrently using `asyncio.gather` or `Promise.all`.
 2. Real word timings from TTS/Whisper are passed cleanly to `CompositionHandler` and exported as valid `.srt` files and burned captions.
 3. Bundled background music is fed into FFmpeg composition with `sidechaincompress` auto-ducking against the voiceover track.
+
+## Answer
+
+Resolved:
+- `VoiceoverAgent.py` and `/assets/resolve` run per-scene TTS and asset resolution in parallel via `asyncio.gather`.
+- `handle_subtitle_extraction_stage` computes real per-scene and global word timings from TTS timestamps, and `SubtitleHandler.ts` propagates `wordTimings` to pipeline state.
+- `CompositionHandler.ts` supplies bundled royalty-free background music (`storage/audio/ambient_track.mp3`), and `AudioMixer.py` compiles FFmpeg `sidechaincompress` and `amix` to dynamically duck background music under speech.
+

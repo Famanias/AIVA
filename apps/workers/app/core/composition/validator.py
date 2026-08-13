@@ -21,9 +21,19 @@ class CompositionValidator:
         # For local execution, we check local paths.
         
         def check_media(ref, name):
-            if ref and not os.path.exists(ref.storage_key):
-                # For MVP, we'll just log a warning instead of hard failing if it's a URL
-                if not ref.storage_key.startswith("http"):
+            if ref and ref.storage_key:
+                if ref.storage_key.startswith("http"):
+                    return
+                if not os.path.exists(ref.storage_key):
+                    # Check relative to repo root or cwd
+                    repo_path = os.path.abspath(os.path.join(os.getcwd(), "..", "..", ref.storage_key))
+                    if os.path.exists(repo_path):
+                        ref.storage_key = repo_path
+                        return
+                    cwd_path = os.path.abspath(os.path.join(os.getcwd(), ref.storage_key))
+                    if os.path.exists(cwd_path):
+                        ref.storage_key = cwd_path
+                        return
                     errors.append(f"Media missing for {name}: {ref.storage_key}")
 
         check_media(model.overlay_track, "Overlay Track")

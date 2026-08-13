@@ -52,6 +52,23 @@ export class CompositionHandler extends BaseHandler {
       height = 1080
     }
 
+    // Resolve Background Music for Auto-Ducking
+    const defaultMusicPath = 'storage/audio/ambient_track.mp3'
+    const customMusicPath = profile.music_url || (state as any).music_url || defaultMusicPath
+    const musicTrack = {
+      id: 'music_ambient',
+      type: 'audio',
+      storage_key: customMusicPath,
+      duration: 0,
+      mime_type: 'audio/mp3'
+    }
+
+    // Resolve Word Timings
+    let wordTimings = voice.wordTimings || voice.word_timings || []
+    if ((!wordTimings || wordTimings.length === 0) && Array.isArray(voice.subtitles)) {
+      wordTimings = voice.subtitles.flatMap((s: any) => s.word_timings || [])
+    }
+
     // 2. Map PipelineState to CompositionModel contract
     const compositionModel = {
       trace_id: context.job.id,
@@ -72,9 +89,9 @@ export class CompositionHandler extends BaseHandler {
         duration: 0,
         mime_type: 'audio/mp3'
       } : null,
-      music_track: null,
+      music_track: musicTrack,
       sfx_tracks: [],
-      word_timings: voice.wordTimings || voice.word_timings || [],
+      word_timings: wordTimings,
       output_settings: {
         codec: 'h264',
         hardware_acceleration: 'auto',

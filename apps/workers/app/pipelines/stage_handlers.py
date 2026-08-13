@@ -197,18 +197,56 @@ async def handle_subtitle_extraction_stage(
     job_id: str,
     scene_voiceovers: list[dict],
 ) -> dict:
-    """Executes the Subtitle Extraction Agent. (Stubbed for MVP)"""
+    """Executes the Subtitle Extraction Agent."""
     LifecycleService.throw_if_cancelled(job_id)
-    logger.info("subtitle_extraction_stub", num_scenes=len(scene_voiceovers))
+    logger.info("subtitle_extraction_stage", num_scenes=len(scene_voiceovers))
     
+    subtitles = []
+    current_time_offset = 0.0
+    global_word_timings = []
+
+    for i, sv in enumerate(scene_voiceovers):
+        seq = sv.get("sequence_number", i + 1)
+        raw_timings = sv.get("word_timings", [])
+        duration = float(sv.get("duration_sec", 0.0) or sv.get("duration", 0.0) or 0.0)
+        
+        # Calculate cumulative offset timings for the global timeline
+        scene_timings = []
+        for wt in raw_timings:
+            start = float(wt.get("start", 0.0))
+            end = float(wt.get("end", 0.0))
+            word = wt.get("word", "")
+            scene_timings.append({
+                "word": word,
+                "start": round(start, 3),
+                "end": round(end, 3),
+            })
+            global_word_timings.append({
+                "word": word,
+                "start": round(start + current_time_offset, 3),
+                "end": round(end + current_time_offset, 3),
+            })
+        
+        if not scene_timings and sv.get("text"):
+            words = str(sv.get("text")).split()
+            if words and duration > 0:
+                t_step = duration / len(words)
+                for w_idx, w in enumerate(words):
+                    w_start = round(w_idx * t_step, 3)
+                    w_end = round((w_idx + 1) * t_step, 3)
+                    scene_timings.append({"word": w, "start": w_start, "end": w_end})
+                    global_word_timings.append({"word": w, "start": round(w_start + current_time_offset, 3), "end": round(w_end + current_time_offset, 3)})
+
+        subtitles.append({
+            "sequence_number": seq,
+            "word_timings": scene_timings,
+            "duration": duration,
+        })
+        current_time_offset += duration
+
     result = {
-        "subtitles": [
-            {
-                "sequence_number": sv.get("sequence_number", i),
-                "word_timings": [],
-            }
-            for i, sv in enumerate(scene_voiceovers)
-        ]
+        "subtitles": subtitles,
+        "global_word_timings": global_word_timings,
     }
 
     try:
