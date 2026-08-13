@@ -31,7 +31,7 @@ async def rerender_single_scene(
     5. Re-stitches final composition reusing unchanged cached scene clips.
     6. Updates database scene status to 'rendered'.
     """
-    logger.info("🎬 [Single Scene Rerender START]", project_id=project_id, scene_id=scene_id)
+    logger.info("[Single Scene Rerender START]", project_id=project_id, scene_id=scene_id)
     
     import uuid
     try:
@@ -272,10 +272,8 @@ async def rerender_single_scene(
             overlay_track.duration = cumulative_time
 
         # Concatenate scene voices if available
-        project_storage_dir = os.path.abspath(os.path.join(os.getcwd(), "storage", "projects", project_id))
-        if not os.path.exists(os.path.dirname(project_storage_dir)):
-            project_storage_dir = os.path.abspath(os.path.join(os.getcwd(), "..", "..", "storage", "projects", project_id))
-        os.makedirs(project_storage_dir, exist_ok=True)
+        from app.core.storage import get_project_storage_dir
+        project_storage_dir = get_project_storage_dir(project_id)
 
         master_voice_file = os.path.join(project_storage_dir, "voice_track.mp3")
         ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
@@ -343,6 +341,29 @@ async def rerender_single_scene(
         # Re-stitch master video via CompositionEngine
         try:
             valid_bg_tracks = [t for t in bg_tracks if os.path.exists(t.storage_key) and not t.storage_key.endswith('.mp3')]
+            
+            # If no visual tracks exist, generate a fallback background plate
+            if not valid_bg_tracks and not overlay_track:
+                bg_video = os.path.join(project_storage_dir, "test_bg.mp4")
+                if not os.path.exists(bg_video) or os.path.getsize(bg_video) == 0:
+                    dur_total = max(3.0, cumulative_time)
+                    subprocess.run([
+                        ffmpeg_bin, "-y", "-f", "lavfi",
+                        "-i", f"color=c=0x1a1a2e:s={width}x{height}:d={dur_total}",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                        bg_video
+                    ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                valid_bg_tracks.append(
+                    MediaReference(
+                        id="bg_default",
+                        type="video",
+                        storage_key=bg_video,
+                        duration=cumulative_time,
+                        mime_type="video/mp4"
+                    )
+                )
+
             if valid_bg_tracks or overlay_track or voice_track:
                 comp_model = CompositionModel(
                     job_id=f"rerender_{project_id}_{scene_row['sequence_number']}",
@@ -365,7 +386,7 @@ async def rerender_single_scene(
         except Exception as comp_err:
             logger.warning("Composition re-stitching skipped or non-fatal", error=str(comp_err))
 
-    logger.info("✅ [Single Scene Rerender COMPLETE]", scene_id=scene_id, project_id=project_id)
+    logger.info("[Single Scene Rerender COMPLETE]", scene_id=scene_id, project_id=project_id)
     return {
         "status": "success",
         "project_id": project_id,

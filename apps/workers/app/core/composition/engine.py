@@ -46,12 +46,9 @@ class CompositionEngine:
             render_time_ms = Encoder.encode(model, inputs, filter_complex, v_pad, a_pad, output_path)
             
             # 5. Persist output files to project storage
+            from app.core.storage import get_project_storage_dir
             project_id = model.metadata.get("project_id", model.job_id)
-            storage_dir = os.path.abspath(os.path.join(os.getcwd(), "storage", "projects", project_id))
-            if not os.path.exists(os.path.dirname(storage_dir)):
-                storage_dir = os.path.abspath(os.path.join(os.getcwd(), "..", "..", "storage", "projects", project_id))
-            
-            os.makedirs(storage_dir, exist_ok=True)
+            storage_dir = get_project_storage_dir(project_id)
             
             target_mp4 = os.path.join(storage_dir, "composition.mp4")
             import shutil

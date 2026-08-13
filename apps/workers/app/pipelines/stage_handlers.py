@@ -178,11 +178,9 @@ async def handle_voiceover_stage(
     
     master_audio_url = None
     if outputs:
+        from app.core.storage import get_project_storage_dir
         valid_project_id = project_id or job_id
-        project_storage_dir = os.path.abspath(os.path.join(os.getcwd(), "storage", "projects", valid_project_id))
-        if not os.path.exists(os.path.dirname(project_storage_dir)):
-            project_storage_dir = os.path.abspath(os.path.join(os.getcwd(), "..", "..", "storage", "projects", valid_project_id))
-        os.makedirs(project_storage_dir, exist_ok=True)
+        project_storage_dir = get_project_storage_dir(valid_project_id)
         master_voice_file = os.path.join(project_storage_dir, "master_voice.mp3")
 
         if len(outputs) == 1:

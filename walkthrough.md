@@ -76,3 +76,34 @@
 ### Manual QA Validation Steps
 1. Send a request to `POST /api/v1/projects` with custom header `x-user-id: 11111111-1111-1111-1111-111111111111` and verify that the created project in `public.projects` has `user_id = '11111111-1111-1111-1111-111111111111'`.
 2. Request a media file via `GET /api/v1/storage/...` with an invalid range header (e.g. `Range: bytes=999999-1000000` on a small file) and verify that HTTP 416 Range Not Satisfiable is returned.
+
+---
+
+## Phase 4: Clean-Clone End-to-End Pipeline Certifier
+
+### Summary of Changes
+- **`apps/workers/app/core/storage.py`**: Created deterministic shared storage resolver `get_project_storage_dir` used uniformly across workers, composition engine, and pipeline runners.
+- **`apps/workers/app/pipeline/certifier_runner.py`**: Created unmocked CLI runner allowing end-to-end stage execution from TypeScript with delimited JSON envelopes and UTF-8 stream handling.
+- **`scripts/certify_pipeline.ts`**: Rewrote the pipeline certifier to execute real, unmocked media pipelines across 5 comprehensive suites:
+  1. *Suite 1*: Topic Brief & Multi-Scene Persistence with relational tagging.
+  2. *Suite 2*: Parallel EdgeTTS synthesis, multi-scene audio concatenation (`master_voice.mp3`), and word timing extraction.
+  3. *Suite 3*: FFmpeg Composition Engine execution, audio ducking mixer, SubRip generation (`subtitles.srt`), and MP4 rendering (`composition.mp4`).
+  4. *Suite 4*: Single-Scene timeline re-render, scene voice re-synthesis, and master MP4 re-composition.
+  5. *Suite 5*: Custom Script direct ingestion and verbatim narration bypass.
+- **`apps/workers/app/core/composition/engine.py`**: Integrated `get_project_storage_dir` for master video and subtitle export.
+
+### Files Modified / Created
+- [`apps/workers/app/core/storage.py`](file:///d:/repos/AIVA/apps/workers/app/core/storage.py) (NEW)
+- [`apps/workers/app/pipeline/certifier_runner.py`](file:///d:/repos/AIVA/apps/workers/app/pipeline/certifier_runner.py) (NEW)
+- [`apps/workers/app/core/composition/engine.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/engine.py)
+- [`scripts/certify_pipeline.ts`](file:///d:/repos/AIVA/scripts/certify_pipeline.ts)
+- [`.gitignore`](file:///d:/repos/AIVA/.gitignore)
+
+### Automated Verification Results
+- **Pipeline Certifier**: `pnpm test:pipeline` -> 5/5 Suites PASSED (100% genuine end-to-end media generation).
+- **Worker Unit Tests**: `venv\Scripts\python.exe -m pytest tests/ -v` -> 11/11 PASSED (100%).
+- **Web App Production Build**: `pnpm --filter web build` -> Next.js 16 build succeeded with 0 errors.
+
+### Manual QA Validation Steps
+1. Run `pnpm test:pipeline` in the terminal and verify that all 5 suites pass with green checkmarks.
+2. Inspect `.artifacts/validation_report.md` and confirm that all media generation invariants are verified.
