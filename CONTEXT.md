@@ -33,7 +33,12 @@ The system has been fully pivoted to a 100% self-hosted, local-first deployment 
 - **Media Range Streaming API**: Built Next.js `/api/v1/storage/[...path]` route streaming local `./storage/projects/...` assets with HTTP range request support (`206 Partial Content`).
 - **Disk Stage Checkpoint Recovery**: Saved stage checkpoints to `./storage/projects/{id}/revisions/v{rev}/checkpoint_{stage}.json` for $0.00 repeated LLM/TTS costs on crash retries.
 - **Offline Local AI Models**: Added `OllamaProvider` (`http://localhost:11434`) for 100% local offline LLM inference.
-- **Settings & Timeline Studio UIs**: Responsive `/settings` page for key management & Ollama connection testing, and `/projects/[id]/timeline` studio page for scene inspection & single-scene re-rendering.
+**Version 1 MVP Release [✅ COMPLETE]**
+
+The platform has reached 100% Version 1 MVP completion:
+- **Single-Scene Partial Re-Rendering**: Integrated inline prompt & narration text editing into Timeline Studio (`/projects/[id]/timeline`), queueing targeted single-scene rerenders while preserving unchanged scene clip checkpoints.
+- **Production Dockerization**: Added multi-stage `Dockerfile` manifests for Python workers (`python:3.11-slim` + FFmpeg + Whisper), Node.js template renderer (`node:20-slim` + Chromium), and Next.js web application (`node:20-alpine`).
+- **Asset Export & Downloads**: Added native browser file downloads (`Content-Disposition: attachment`) for MP4 compositions, SRT subtitles, and script JSON checkpoints from the Project Overview dashboard (`/projects/[id]`).
 
 **Phase 2 — Publishing & Automation [🚧 UP NEXT]**
 
