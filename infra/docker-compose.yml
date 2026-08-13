@@ -133,8 +133,8 @@ services:
   # ---------------------------------------------------------------------------
   web:
     build:
-      context: ../apps/web
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: apps/web/Dockerfile
     container_name: aiva-web
     restart: unless-stopped
     depends_on:

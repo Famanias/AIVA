@@ -5,17 +5,21 @@ WORKDIR /app
 # Enable pnpm
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
-COPY package.json /app/package.json
-COPY proxy.ts /app/proxy.ts
-COPY next.config.ts /app/next.config.ts 2>/dev/null || true
-COPY tsconfig.json /app/tsconfig.json
+# Copy root monorepo files & packages
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
+COPY packages /app/packages
+COPY apps/web /app/apps/web
+# Copy template-renderer source so cross-package type imports resolve during next build
+COPY apps/template-renderer/src /app/apps/template-renderer/src
+COPY apps/template-renderer/package.json /app/apps/template-renderer/package.json
 
-# Copy application files
-COPY . /app
+# Install dependencies and build web
+RUN pnpm install --no-frozen-lockfile
+RUN pnpm --filter web build
 
 EXPOSE 3000
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
-CMD ["pnpm", "start"]
+CMD ["pnpm", "--filter", "web", "start"]

@@ -1,0 +1,16 @@
+**/node_modules
+**/.next
+**/venv
+**/__pycache__
+**/*.pyc
+storage
+models
+.git
+.env
+.env.local
+apps/web/scripts
+apps/workers/tests
+infra
+scripts
+*.log
+*.tmp
