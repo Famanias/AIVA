@@ -26,15 +26,17 @@ export async function POST(req: Request) {
 
     const durationMinutes = Math.max(1, Math.round((duration_target_seconds || 60) / 60));
 
-    // Get default dev user ID or fallback to zero-UUID
-    let userId = '00000000-0000-0000-0000-000000000000';
-    try {
-      const userRes = await query(`SELECT id FROM auth.users LIMIT 1`);
-      if (userRes.rows.length > 0) {
-        userId = userRes.rows[0].id;
+    // Resolve user ID from request headers or auth session
+    const headerUserId = req.headers.get('x-user-id');
+    let userId = headerUserId || null;
+
+    if (!userId) {
+      const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NEXT_PUBLIC_SUPABASE_URL;
+      if (isLocalDev) {
+        userId = '00000000-0000-0000-0000-000000000000';
+      } else {
+        return NextResponse.json({ status: 'error', error: 'Unauthorized: Missing user authentication session' }, { status: 401 });
       }
-    } catch (userErr: any) {
-      console.warn('[Project Route] Default user lookup note:', userErr.message);
     }
 
     // 1. Insert Project into PostgreSQL

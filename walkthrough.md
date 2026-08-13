@@ -53,3 +53,26 @@
 2. Trigger a single-scene re-render.
 3. Verify in `public.scenes` that only Scene 1's `script_segment`, `voiceover_url`, and `duration` were modified.
 4. Verify that `storage/projects/{id}/composition.mp4` and `storage/projects/{id}/subtitles.srt` were re-rendered with the updated narration while preserving the rest of the project's scenes.
+
+---
+
+## Phase 3: Project Routes Authentication & Storage Stream Hardening
+
+### Summary of Changes
+- **`apps/web/src/app/api/v1/projects/route.ts`**: Restored user session validation using `x-user-id` request header with controlled local development fallback, eliminating arbitrary `SELECT id FROM auth.users LIMIT 1` database lookups and enforcing 401 Unauthorized for unauthenticated requests in production mode.
+- **`apps/web/src/app/api/v1/projects/[id]/execute/route.ts`**: Harmonized user authentication with the project creation route.
+- **`apps/web/src/app/api/v1/storage/[...path]/route.ts`**: Added Range header parameter validation (`isNaN`, boundary checks, `start <= end`) returning standard HTTP 416 (Range Not Satisfiable) on invalid range requests instead of throwing internal server errors.
+- **Deleted `apps/web/proxy.ts`**: Removed redundant file at root of `apps/web`.
+
+### Files Modified / Deleted
+- [`apps/web/src/app/api/v1/projects/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/route.ts)
+- [`apps/web/src/app/api/v1/projects/[id]/execute/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/%5Bid%5D/execute/route.ts)
+- [`apps/web/src/app/api/v1/storage/[...path]/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/storage/%5B...path%5D/route.ts)
+- `apps/web/proxy.ts` (Deleted)
+
+### Automated Verification Results
+- **TypeScript Typecheck**: `pnpm --filter web exec tsc --noEmit` -> 0 errors.
+
+### Manual QA Validation Steps
+1. Send a request to `POST /api/v1/projects` with custom header `x-user-id: 11111111-1111-1111-1111-111111111111` and verify that the created project in `public.projects` has `user_id = '11111111-1111-1111-1111-111111111111'`.
+2. Request a media file via `GET /api/v1/storage/...` with an invalid range header (e.g. `Range: bytes=999999-1000000` on a small file) and verify that HTTP 416 Range Not Satisfiable is returned.

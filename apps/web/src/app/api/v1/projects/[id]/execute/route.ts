@@ -30,14 +30,16 @@ export async function POST(
       let project = projRes.rows[0]
 
       if (!project) {
-        let userId = '00000000-0000-0000-0000-000000000000'
-        try {
-          const userRes = await query(`SELECT id FROM auth.users LIMIT 1`)
-          if (userRes.rows.length > 0) {
-            userId = userRes.rows[0].id
+        const headerUserId = req.headers.get('x-user-id')
+        let userId = headerUserId || null
+
+        if (!userId) {
+          const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NEXT_PUBLIC_SUPABASE_URL
+          if (isLocalDev) {
+            userId = '00000000-0000-0000-0000-000000000000'
+          } else {
+            return NextResponse.json({ error: 'Unauthorized: Missing user authentication session' }, { status: 401 })
           }
-        } catch (e: any) {
-          console.warn('[Execute Route] User lookup fallback:', e.message)
         }
 
         const insertProj = await query(

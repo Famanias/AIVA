@@ -43,6 +43,16 @@ export async function GET(
     const parts = range.replace(/bytes=/, "").split("-");
     const start = parseInt(parts[0], 10);
     const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+
+    if (isNaN(start) || isNaN(end) || start < 0 || start >= stat.size || end >= stat.size || start > end) {
+      return new NextResponse(null, {
+        status: 416,
+        headers: {
+          "Content-Range": `bytes */${stat.size}`,
+        },
+      });
+    }
+
     const chunksize = end - start + 1;
     const fileStream = fs.createReadStream(filePath, { start, end });
 
