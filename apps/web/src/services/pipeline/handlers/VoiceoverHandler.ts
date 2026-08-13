@@ -1,6 +1,7 @@
 import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
 import { workerGateway } from '../WorkerGateway'
+import { query } from '@aiva/database'
 
 export class VoiceoverHandler extends BaseHandler {
   getTimeoutMs(): number {
@@ -35,10 +36,25 @@ export class VoiceoverHandler extends BaseHandler {
       updatedState.voice = {}
     }
 
-    if (response.data.voiceovers) {
+    if (response.data.voiceovers && Array.isArray(response.data.voiceovers)) {
       updatedState.voice.scene_voiceovers = response.data.voiceovers
       // Just take the first one for logging if needed
       updatedState.voice.audioUrl = response.data.voiceovers[0]?.audio_url
+
+      // Update voiceover_url and duration on public.scenes in PostgreSQL
+      for (const [idx, vo] of response.data.voiceovers.entries()) {
+        const seq = Number(vo.sequence_number || (idx + 1))
+        const duration = Number(vo.duration || 0)
+        const audioUrl = vo.audio_url || vo.audioUrl || null
+        await query(
+          `UPDATE public.scenes 
+           SET voiceover_url = COALESCE($1, voiceover_url), 
+               duration = CASE WHEN $2 > 0 THEN $2 ELSE duration END,
+               render_status = 'generating'
+           WHERE project_id = $3 AND sequence_number = $4`,
+          [audioUrl, duration, context.project.id, seq]
+        )
+      }
     }
 
     Object.assign(context.state, updatedState)

@@ -23,7 +23,7 @@ export async function GET(
     const project = projectRes.rows[0];
 
     const scenesRes = await query(
-      `SELECT s.*, sv.script_segment, sv.visual_type, sv.visual_prompt
+      `SELECT s.*, sv.script_segment, sv.visual_type, sv.visual_prompt, sv.animation_action, sv.camera_style, sv.typography_template, sv.transition, sv.emotional_tone, sv.broll_search_keywords
        FROM public.scenes s
        LEFT JOIN public.scene_versions sv ON s.current_version_id = sv.id
        WHERE s.project_id = $1

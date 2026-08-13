@@ -2,6 +2,7 @@ import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
 import { workerGateway } from '../WorkerGateway'
 import { PipelineIR } from '../../../../../template-renderer/src/types/PipelineIR'
+import { query } from '@aiva/database'
 
 export class RenderHandler extends BaseHandler {
   getTimeoutMs(): number {
@@ -83,16 +84,26 @@ export class RenderHandler extends BaseHandler {
     }
 
     // 4. Update Pipeline State with Render Result
+    const outputVideoUrl = response.result?.outputs?.video || ''
     Object.assign(context.state, {
       ...state,
       render: {
-        outputUrl: response.result.outputs?.video,
-        metrics: response.result.metrics,
+        outputUrl: outputVideoUrl,
+        metrics: response.result?.metrics,
         completedAt: new Date().toISOString()
       }
     })
 
-    await context.logger.info(`Rendering completed successfully: ${response.result.outputs?.video}`)
+    // Update render_status to 'rendered' for all scenes of the project
+    await query(
+      `UPDATE public.scenes 
+       SET render_status = 'rendered', 
+           render_url = COALESCE(render_url, $1) 
+       WHERE project_id = $2`,
+      [outputVideoUrl, context.project.id]
+    )
+
+    await context.logger.info(`Rendering completed successfully: ${outputVideoUrl}`)
     
     return 'composition'
   }

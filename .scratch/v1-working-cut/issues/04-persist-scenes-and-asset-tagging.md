@@ -1,7 +1,7 @@
 # 04 Persist Scenes and Asset Tagging to PostgreSQL
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 01, 03
 
 ## Question
@@ -17,3 +17,11 @@ Scenes are currently stored only inside `state_payload` JSON. The database table
 1. Generated scene breakdowns are inserted into `public.scenes` and `public.scene_versions` with valid UUIDs, `project_id`, `sequence_number`, `duration`, `visual_type`, `script_segment`, and `visual_prompt`.
 2. Each scene is explicitly tagged as `stock_photo`, `ai_image`, or `character_animation`.
 3. Timeline Studio displays real scenes fetched from `public.scenes`.
+
+## Answer
+
+Resolved:
+- `ScriptHandler.ts` now maps and persists all generated scene directions to `public.scenes` and `public.scene_versions` in PostgreSQL with proper UUID keys and normalized visual type enums.
+- `VoiceoverHandler.ts`, `SubtitleHandler.ts`, and `RenderHandler.ts` update `voiceover_url`, `voiceover_word_timings`, `duration`, and `render_status` on `public.scenes` throughout the pipeline lifecycle.
+- `GET /api/v1/projects/[id]` joins `public.scenes` with `public.scene_versions` to feed Timeline Studio with real persistent data.
+

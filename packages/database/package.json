@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "scripts": {
     "migrate": "tsx src/migrate.ts",
-    "test": "tsx src/test-phase1.ts"
+    "test": "tsx src/test-phase1.ts",
+    "test:scenes": "tsx src/test-scenes-persistence.ts"
   },
   "dependencies": {
     "pg": "^8.23.0"

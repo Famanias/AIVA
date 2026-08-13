@@ -1,6 +1,7 @@
 import { BaseHandler } from './BaseHandler'
 import { PipelineContext } from '../PipelineContext'
 import { workerGateway } from '../WorkerGateway'
+import { query } from '@aiva/database'
 
 export class SubtitleHandler extends BaseHandler {
   getTimeoutMs(): number {
@@ -30,6 +31,20 @@ export class SubtitleHandler extends BaseHandler {
     
     // Assign subtitles to state
     updatedState.voice.subtitles = response.data.subtitles
+
+    // Persist word timings to public.scenes in PostgreSQL
+    if (Array.isArray(response.data.subtitles)) {
+      for (const [idx, sub] of response.data.subtitles.entries()) {
+        const seq = Number(sub.sequence_number || (idx + 1))
+        const timings = sub.word_timings || sub.wordTimings || sub
+        await query(
+          `UPDATE public.scenes
+           SET voiceover_word_timings = $1
+           WHERE project_id = $2 AND sequence_number = $3`,
+          [JSON.stringify(timings), context.project.id, seq]
+        )
+      }
+    }
 
     Object.assign(context.state, updatedState)
     await context.logger.info(`Subtitle extraction completed successfully. Extracted ${response.data.subtitles?.length || 0} scenes.`)
