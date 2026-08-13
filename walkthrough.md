@@ -200,4 +200,58 @@ pnpm --filter web dev
 3. Paste a test script segment, select **Vertical 9:16 (Shorts/Reels)**, **60 Seconds**, and click **Start Pipeline Generation**.
 4. **Expected Result:** Browser redirects smoothly to `/projects/{id}` dashboard without 404 or parallel route collision errors.
 
+---
+
+## Phase 4: Composition Output Persistence & Subtitle Export
+
+### What Was Implemented
+1. **Persistent Media & Subtitle Exporter in Workers (`apps/workers/app/core/composition/engine.py` & `subtitle_generator.py`)**:
+   - Added `SubtitleGenerator.generate_srt()` to convert scene word timings into standard `.srt` format.
+   - Updated `CompositionEngine.run()` to copy rendered video output (`master_{job_id}.mp4`) to `./storage/projects/{project_id}/composition.mp4` and output `./storage/projects/{project_id}/subtitles.srt`.
+
+2. **Storage Endpoint MIME Type Mapping (`apps/web/src/app/api/v1/storage/[...path]/route.ts`)**:
+   - Added `.srt` MIME type (`application/x-subrip`) to storage route handler.
+   - Enforces `Content-Disposition: attachment; filename="subtitles.srt"` when `?download=true` query parameter is present.
+
+---
+
+### Files & Components Changed
+- `[MODIFY]` [`apps/workers/app/core/composition/subtitle_generator.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/subtitle_generator.py) — Added `generate_srt()` formatting.
+- `[MODIFY]` [`apps/workers/app/core/composition/engine.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/engine.py) — Persisted `composition.mp4` and `subtitles.srt` into `./storage/projects/{project_id}/`.
+- `[MODIFY]` [`apps/web/src/app/api/v1/storage/[...path]/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/storage/%5B...path%5D/route.ts) — Added `.srt` mime-type mapping for file downloads.
+
+---
+
+### Automated Verification Performed
+
+1. **Web Storage & Download Unit Tests**:
+   ```bash
+   pnpm --filter web test
+   ```
+   **Result:** ✅ PASSED (`Storage download attachment header test passed!`).
+
+2. **Python Composition & Worker Tests**:
+   ```bash
+   .\apps\workers\venv\Scripts\python.exe -m pytest apps/workers/tests/test_phase3.py
+   ```
+   **Result:** ✅ PASSED (3 passed in 0.55s).
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 4 on your machine, follow these steps:
+
+#### Step 1: Run Test Composition Copy
+Open PowerShell and verify storage persistence logic:
+```powershell
+$env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\python.exe -c "from app.core.composition.subtitle_generator import SubtitleGenerator; print(SubtitleGenerator.generate_srt([{'word':'Test','start':0,'end':1}], 'storage/projects/test-proj/subtitles.srt'))"
+```
+**Expected Output:** Prints `[SubtitleGenerator] Generated SRT subtitle file at storage/projects/test-proj/subtitles.srt`.
+
+#### Step 2: Test Subtitle Download API
+Visit `http://localhost:3000/api/v1/storage/projects/test-proj/subtitles.srt?download=true` in your browser.
+**Expected Result:** Browser triggers a file download containing the `.srt` subtitle content.
+
+
 

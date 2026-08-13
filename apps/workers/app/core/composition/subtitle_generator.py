@@ -55,3 +55,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 
         print(f"[SubtitleGenerator] Generated subtitle file at {out_path}")
         return out_path
+
+    @staticmethod
+    def _format_srt_time(seconds: float) -> str:
+        """Converts seconds float to SRT time format: HH:MM:SS,mmm"""
+        h = int(seconds // 3600)
+        m = int((seconds % 3600) // 60)
+        s = int(seconds % 60)
+        ms = int(round((seconds - int(seconds)) * 1000))
+        return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+    @staticmethod
+    def generate_srt(word_timings: List[Dict[str, Any]], out_path: str) -> str:
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
+            if not word_timings:
+                f.write("1\n00:00:00,000 --> 00:00:05,000\n[No subtitles generated]\n\n")
+            else:
+                for idx, word_obj in enumerate(word_timings, 1):
+                    start_str = SubtitleGenerator._format_srt_time(word_obj.get("start", 0))
+                    end_str = SubtitleGenerator._format_srt_time(word_obj.get("end", 0))
+                    text = word_obj.get("word", "").strip()
+                    f.write(f"{idx}\n{start_str} --> {end_str}\n{text}\n\n")
+        print(f"[SubtitleGenerator] Generated SRT subtitle file at {out_path}")
+        return out_path

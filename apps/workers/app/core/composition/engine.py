@@ -45,7 +45,23 @@ class CompositionEngine:
             
             render_time_ms = Encoder.encode(model, inputs, filter_complex, v_pad, a_pad, output_path)
             
-            # 5. Result
+            # 5. Persist output files to project storage
+            project_id = model.metadata.get("project_id", model.job_id)
+            storage_dir = os.path.abspath(os.path.join(os.getcwd(), "storage", "projects", project_id))
+            if not os.path.exists(os.path.dirname(storage_dir)):
+                storage_dir = os.path.abspath(os.path.join(os.getcwd(), "..", "..", "storage", "projects", project_id))
+            
+            os.makedirs(storage_dir, exist_ok=True)
+            
+            target_mp4 = os.path.join(storage_dir, "composition.mp4")
+            import shutil
+            shutil.copy2(output_path, target_mp4)
+            print(f"[CompositionEngine] Persisted final video to {target_mp4}")
+
+            target_srt = os.path.join(storage_dir, "subtitles.srt")
+            SubtitleGenerator.generate_srt(model.word_timings, target_srt)
+            
+            # 6. Result
             log_progress("Composition Finished", 100)
             
             # Calculate final duration based on inputs (simplified for MVP)
@@ -57,7 +73,7 @@ class CompositionEngine:
                 output_reference=MediaReference(
                     id=str(uuid.uuid4()),
                     type="video",
-                    storage_key=output_path,
+                    storage_key=target_mp4,
                     duration=final_duration,
                     codec=model.output_settings.codec,
                     mime_type="video/mp4"

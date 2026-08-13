@@ -11,6 +11,7 @@ const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".json": "application/json",
+  ".srt": "application/x-subrip",
 };
 
 export async function GET(
