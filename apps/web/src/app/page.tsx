@@ -9,8 +9,14 @@ import { OperationsSummaryHeader } from '../components/dashboard/OperationsSumma
 
 function InitializePipeline() {
   const router = useRouter()
+  const [inputMode, setInputMode] = useState<'topic' | 'custom_script'>('topic')
   const [topic, setTopic] = useState('')
+  const [customScript, setCustomScript] = useState('')
   const [style, setStyle] = useState('stickman_animation')
+  const [aspectRatio, setAspectRatio] = useState<'9:16' | '16:9'>('9:16')
+  const [durationSeconds, setDurationSeconds] = useState(60)
+  const [voiceId, setVoiceId] = useState('en-US-AriaNeural')
+  const [persona, setPersona] = useState('Informative')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -20,15 +26,26 @@ function InitializePipeline() {
     setError('')
 
     try {
+      const payload = {
+        input_mode: inputMode,
+        topic: inputMode === 'topic' ? topic : (topic || customScript.slice(0, 30)),
+        custom_script: inputMode === 'custom_script' ? customScript : '',
+        style,
+        aspect_ratio: aspectRatio,
+        duration_target_seconds: durationSeconds,
+        voice_id: voiceId,
+        persona,
+      }
+
       const res = await fetch('/api/v1/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, style }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
       
-      if (!res.ok) {
+      if (!res.ok || data.status === 'error') {
         throw new Error(data.error || 'Failed to create project')
       }
 
@@ -40,52 +57,159 @@ function InitializePipeline() {
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 h-fit">
-      <h2 className="text-xl font-bold mb-2">Initialize Pipeline</h2>
-      <p className="text-zinc-400 text-sm mb-6">
-        Submit a topic to begin the AI generation loop.
-      </p>
+    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 h-fit space-y-4">
+      <div>
+        <h2 className="text-xl font-bold mb-1">Create Video Brief</h2>
+        <p className="text-zinc-400 text-xs">
+          Configure video brief parameters to initialize the generation pipeline.
+        </p>
+      </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-950/50 border border-red-900 text-red-400 rounded text-sm">
+        <div className="p-3 bg-red-950/50 border border-red-900 text-red-400 rounded text-xs">
           {error}
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Input Mode Selector */}
         <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-1">Topic</label>
-          <input
-            type="text"
-            required
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. History of the Roman Empire"
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition-colors"
-          />
+          <label className="block text-xs font-semibold text-zinc-300 mb-1.5">Input Mode</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setInputMode('topic')}
+              className={`py-1.5 px-3 text-xs rounded-lg font-medium border transition ${
+                inputMode === 'topic'
+                  ? 'bg-indigo-600 text-white border-indigo-500'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+              }`}
+            >
+              Topic Brief (AI Research)
+            </button>
+            <button
+              type="button"
+              onClick={() => setInputMode('custom_script')}
+              className={`py-1.5 px-3 text-xs rounded-lg font-medium border transition ${
+                inputMode === 'custom_script'
+                  ? 'bg-indigo-600 text-white border-indigo-500'
+                  : 'bg-zinc-950 text-zinc-400 border-zinc-800 hover:border-zinc-700'
+              }`}
+            >
+              Custom Script Paste
+            </button>
+          </div>
         </div>
 
+        {/* Topic Input or Custom Script Textarea */}
+        {inputMode === 'topic' ? (
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1">Topic</label>
+            <input
+              type="text"
+              required
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="e.g. History of the Roman Empire"
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1">Custom Script</label>
+            <textarea
+              required
+              rows={4}
+              value={customScript}
+              onChange={(e) => setCustomScript(e.target.value)}
+              placeholder="Paste your full narration script segment here..."
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+          </div>
+        )}
+
+        {/* Aspect Ratio & Format */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1">Format / Aspect Ratio</label>
+            <select
+              value={aspectRatio}
+              onChange={(e) => setAspectRatio(e.target.value as any)}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="9:16">Vertical 9:16 (Shorts/Reels)</option>
+              <option value="16:9">Horizontal 16:9 (YouTube)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1">Duration Target</label>
+            <select
+              value={durationSeconds}
+              onChange={(e) => setDurationSeconds(Number(e.target.value))}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value={30}>30 Seconds (Quick Hook)</option>
+              <option value={60}>60 Seconds (Standard Short)</option>
+              <option value={90}>90 Seconds (Extended)</option>
+              <option value={180}>180 Seconds (3 Minutes)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Template Style & Voice Selection */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1">Template Style</label>
+            <select
+              value={style}
+              onChange={(e) => setStyle(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="stickman_animation">Stickman Animation</option>
+              <option value="documentary">Ken-Burns Documentary</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1">Voice Selection</label>
+            <select
+              value={voiceId}
+              onChange={(e) => setVoiceId(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="en-US-AriaNeural">en-US Aria (Female)</option>
+              <option value="en-US-GuyNeural">en-US Guy (Male)</option>
+              <option value="en-GB-SoniaNeural">en-GB Sonia (British)</option>
+              <option value="en-AU-Neural">en-AU News (Australian)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Persona / Tone */}
         <div>
-          <label className="block text-sm font-medium text-zinc-300 mb-1">Template Style</label>
+          <label className="block text-xs font-semibold text-zinc-300 mb-1">Persona / Tone</label>
           <select
-            value={style}
-            onChange={(e) => setStyle(e.target.value)}
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-blue-500 transition-colors"
+            value={persona}
+            onChange={(e) => setPersona(e.target.value)}
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
           >
-            <option value="stickman_animation">Stickman Animation</option>
-            <option value="documentary">Ken-Burns Documentary</option>
+            <option value="Informative">Informative & Educational</option>
+            <option value="Dramatic">Dramatic & Story-driven</option>
+            <option value="Energetic">Energetic & Fast-paced</option>
+            <option value="Humorous">Humorous & Lighthearted</option>
           </select>
         </div>
 
         <button
           type="submit"
-          disabled={isSubmitting || !topic.trim()}
-          className="w-full bg-white text-black font-semibold rounded-lg px-4 py-2 hover:bg-zinc-200 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          disabled={isSubmitting || (inputMode === 'topic' ? !topic.trim() : !customScript.trim())}
+          className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg px-4 py-2.5 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 text-xs"
         >
           {isSubmitting ? (
-            <><Loader2 className="w-4 h-4 animate-spin" /> Enqueueing Job...</>
+            <><Loader2 className="w-4 h-4 animate-spin" /> Initializing Brief...</>
           ) : (
-            'Start Generation'
+            'Start Pipeline Generation'
           )}
         </button>
       </form>

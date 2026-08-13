@@ -138,3 +138,66 @@ $env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\python.exe -c "impor
 Visit `http://localhost:3000/settings` in your browser, enter `http://localhost:11434` into Ollama Base URL, and click **Test Connection**.
 **Expected Result:** Connected badge displays installed Ollama models, or returns informative error without throwing server crashes.
 
+---
+
+## Phase 3: Brief Creation Form Expansion & Route Collision Cleanup
+
+### What Was Implemented
+1. **Next.js Parallel Route Collision Cleanup (`apps/web/src/app/projects`)**:
+   - Removed redundant legacy directory `apps/web/src/app/projects/[id]` which conflicted with self-hosted route group `apps/web/src/app/(dashboard)/projects/[id]`.
+
+2. **Expanded Video Brief Creation Form (`apps/web/src/app/page.tsx`)**:
+   - Upgraded home page creation widget (`InitializePipeline`) with full Phase 1/Phase 2 brief controls:
+     - **Input Mode Selector:** AI Topic Research vs Custom Script Paste.
+     - **Format & Aspect Ratio:** Vertical 9:16 Shorts/Reels vs Horizontal 16:9 YouTube.
+     - **Target Duration:** 30s (Quick Hook), 60s (Standard Short), 90s, 180s (3 Minutes).
+     - **Template Style:** Stickman Animation vs Ken-Burns Documentary.
+     - **Voice Selection:** `en-US-AriaNeural`, `en-US-GuyNeural`, `en-GB-SoniaNeural`, `en-AU-Neural`.
+     - **Persona / Tone:** Informative, Dramatic, Energetic, Humorous.
+
+3. **Updated POST `/api/v1/projects` Endpoint (`apps/web/src/app/api/v1/projects/route.ts`)**:
+   - Migrated from cloud Supabase SDK client to direct PostgreSQL `@aiva/database` queries.
+   - Saves `input_mode`, `custom_script`, `aspect_ratio`, `voice_id`, and `persona` into `jobs.state_payload` JSON field for worker consumption.
+
+---
+
+### Files & Components Changed
+- `[DELETE]` [`apps/web/src/app/projects/[id]/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/projects/%5Bid%5D/page.tsx) — Removed legacy route group collision file.
+- `[MODIFY]` [`apps/web/src/app/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/page.tsx) — Added brief parameters to `InitializePipeline` component.
+- `[MODIFY]` [`apps/web/src/app/api/v1/projects/route.ts`](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/route.ts) — Updated project submission API route to query local PostgreSQL and save `state_payload`.
+
+---
+
+### Automated Verification Performed
+
+1. **Next.js Production Build & Type Checking**:
+   ```bash
+   pnpm --filter web build
+   ```
+   **Result:** ✅ PASSED (`Finished TypeScript in 5.0s`, `100% static & dynamic page generation`).
+
+2. **Web API Unit Tests**:
+   ```bash
+   pnpm --filter web test
+   ```
+   **Result:** ✅ PASSED.
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 3 on your machine, follow these steps:
+
+#### Step 1: Launch Next.js Web Application
+Run:
+```powershell
+pnpm --filter web dev
+```
+
+#### Step 2: Test Brief Creation Form & Custom Script Paste
+1. Open `http://localhost:3000` in your browser.
+2. Toggle **Input Mode** to **Custom Script Paste**.
+3. Paste a test script segment, select **Vertical 9:16 (Shorts/Reels)**, **60 Seconds**, and click **Start Pipeline Generation**.
+4. **Expected Result:** Browser redirects smoothly to `/projects/{id}` dashboard without 404 or parallel route collision errors.
+
+
