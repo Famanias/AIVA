@@ -47,10 +47,20 @@ export class PipelineExecutor {
     const logger = new PipelineLogger(jobId, currentStep, 'orchestrator')
 
     // 3. Build the Context
+    const rawState = (job.state_payload || {}) as Record<string, any>
+    const generationProfile = state.generationProfile || rawState.generationProfile || {
+      aspect_ratio: rawState.aspect_ratio || '9:16',
+      duration_target_seconds: rawState.duration_target_seconds || 60,
+      voice_id: rawState.voice_id || 'en-US-AriaNeural',
+      persona: rawState.persona || 'Informative',
+      visual_style: project.video_style || 'stickman_animation',
+    }
+
     const context: PipelineContext = {
       project,
       job,
       state,
+      generationProfile,
       config: {},
       logger
     }

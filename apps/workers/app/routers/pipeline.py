@@ -35,12 +35,13 @@ class OutlineStageRequest(BaseStageRequest):
 class ScriptDirectionStageRequest(BaseStageRequest):
     topic: str
     video_style: str
-    outline: list[dict]
-    visual_type_weights: dict[str, float]
-    allowed_templates: list[str]
-    default_camera_pacing: str
-    rig_action_list: list[str]
-    typography_template_list: list[str]
+    outline: list[dict] = []
+    custom_script: str | None = None
+    visual_type_weights: dict[str, float] = {}
+    allowed_templates: list[str] = []
+    default_camera_pacing: str = "fast"
+    rig_action_list: list[str] = []
+    typography_template_list: list[str] = []
     language: str = "en"
     generation_profile: dict[str, Any] | None = None
     # Legacy fallback only — prefer generation_profile
@@ -100,6 +101,7 @@ async def run_script_direction(req: ScriptDirectionStageRequest) -> dict[str, An
             topic=req.topic,
             video_style=req.video_style,
             outline=req.outline,
+            custom_script=req.custom_script,
             visual_type_weights=req.visual_type_weights,
             allowed_templates=req.allowed_templates,
             default_camera_pacing=req.default_camera_pacing,

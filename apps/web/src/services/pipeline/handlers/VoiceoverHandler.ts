@@ -14,13 +14,15 @@ export class VoiceoverHandler extends BaseHandler {
       throw new Error('VoiceoverHandler requires populated scenes from the script stage.')
     }
 
-    await context.logger.info('Dispatching job to Python Voiceover Worker...')
+    const voiceId = context.generationProfile?.voice_id || (state as any).voice_id || (state as any).generationProfile?.voice_id || 'en-US-AriaNeural'
+    
+    await context.logger.info(`Dispatching job to Python Voiceover Worker with voice: ${voiceId}...`)
     
     const response = await workerGateway.execute<any>('/pipeline/voiceover', {
       trace_id: context.job.id,
       project_id: context.project.id,
       scenes: state.scenes,
-      voice_id: 'en-US-AriaNeural'
+      voice_id: voiceId
     }, 5 * 60 * 1000)
 
     if (response.status !== 'success') {

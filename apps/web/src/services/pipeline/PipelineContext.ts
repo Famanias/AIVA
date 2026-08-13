@@ -19,6 +19,17 @@ export const PipelineStateSchema = z.object({
 
 export type PipelineState = z.infer<typeof PipelineStateSchema>
 
+export interface GenerationProfile {
+  aspect_ratio?: string
+  duration_target_seconds?: number
+  voice_id?: string
+  persona?: string
+  visual_style?: string
+  music_prompt?: string
+  music_ducking_volume?: number
+  [key: string]: any
+}
+
 /**
  * The unified context object passed to every stage handler in the pipeline.
  * Contains everything a handler needs to execute its isolated task.
@@ -29,6 +40,7 @@ export interface PipelineContext {
   state: PipelineState
   logger: IPipelineLogger
   config: Record<string, any>
+  generationProfile?: GenerationProfile
   db?: any
 }
 

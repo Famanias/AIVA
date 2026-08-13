@@ -11,20 +11,28 @@ export class ScriptHandler extends BaseHandler {
   async execute(context: PipelineContext): Promise<string | null> {
     const state = context.state
 
-    if (!state.outline || state.outline.length === 0) {
-      throw new Error('ScriptHandler requires a generated outline.')
+    const customScript = (state as any).custom_script || state.custom_script || ''
+    const hasCustomScript = typeof customScript === 'string' && customScript.trim().length > 0
+
+    if (!hasCustomScript && (!state.outline || state.outline.length === 0)) {
+      throw new Error('ScriptHandler requires a generated outline or custom_script.')
     }
 
-    await context.logger.info('Dispatching job to Python Script Direction Worker...')
+    await context.logger.info(
+      hasCustomScript 
+        ? 'Dispatching custom script to Python Script Direction Worker...' 
+        : 'Dispatching job to Python Script Direction Worker...'
+    )
     
-    const activeProfile = (context.state as any).generationProfile ?? SHORT_FORM_PROFILE
+    const activeProfile = context.generationProfile ?? (context.state as any).generationProfile ?? SHORT_FORM_PROFILE
 
     const response = await workerGateway.execute<any>('/pipeline/script_direction', {
       trace_id: context.job.id,
       project_id: context.project.id,
       topic: context.project.topic,
+      custom_script: hasCustomScript ? customScript : undefined,
       video_style: context.project.video_style || 'stickman_animation',
-      outline: state.outline,
+      outline: state.outline || [],
       visual_type_weights: { 'character_animation': 0.7, 'broll': 0.3 },
       allowed_templates: ['character_animation', 'broll', 'ai_image'],
       default_camera_pacing: 'fast',

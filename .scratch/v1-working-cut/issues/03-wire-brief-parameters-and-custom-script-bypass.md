@@ -1,7 +1,7 @@
 # 03 Wire Brief Parameters and Custom Script Bypass
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 01
 
 ## Question
@@ -18,3 +18,14 @@ How should `PipelineExecutor` and the stage handlers branch to bypass `research`
 2. The `ScriptDirectorAgent` receives the raw custom script and generates scene breakdowns respecting the script text.
 3. `VoiceoverHandler` reads `state.generationProfile.voice_id` (or `state.voice_id`).
 4. `CompositionHandler` and `RenderHandler` read `state.generationProfile.aspect_ratio` and geometry parameters.
+
+## Answer
+
+Resolved:
+- `apps/web/src/app/api/v1/projects/route.ts` routes custom script projects directly to `initialStep = 'script_direction'` and packages `generationProfile` into `state_payload`.
+- `PipelineContext.ts` and `PipelineExecutor.ts` load and inject `generationProfile` into stage context.
+- `ScriptHandler.ts` allows execution when `custom_script` is provided and forwards it to the Python worker.
+- `VoiceoverHandler.ts` reads `voice_id` from `context.generationProfile`.
+- `CompositionHandler.ts` and `RenderHandler.ts` extract `aspect_ratio` and calculate frame geometry from `context.generationProfile`.
+- Python worker request models and handlers updated to parse `custom_script` and chunk the exact narration into scenes.
+

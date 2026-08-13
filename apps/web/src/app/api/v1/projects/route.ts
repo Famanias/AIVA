@@ -48,29 +48,41 @@ export async function POST(req: Request) {
 
     const project = projectRes.rows[0];
 
+    const isCustomScript = input_mode === 'custom_script' || (typeof custom_script === 'string' && custom_script.trim().length > 0);
+    const initialStep = isCustomScript ? 'script_direction' : 'research';
+
+    const generationProfile = {
+      aspect_ratio: aspect_ratio || '9:16',
+      duration_target_seconds: Number(duration_target_seconds) || 60,
+      voice_id: voice_id || 'en-US-AriaNeural',
+      persona: persona || 'Informative',
+      visual_style: style || 'stickman_animation',
+    };
+
     const statePayload = {
-      input_mode,
-      custom_script,
+      input_mode: isCustomScript ? 'custom_script' : 'topic',
+      custom_script: isCustomScript ? custom_script : '',
       aspect_ratio,
       duration_target_seconds,
       voice_id,
       persona,
+      generationProfile,
     };
 
     // 2. Insert Job tracking row
     const jobRes = await query(
       `INSERT INTO public.jobs (
         id, project_id, current_step, progress, state_payload
-      ) VALUES ($1, $2, 'research', 0, $3)
+      ) VALUES ($1, $2, $3, 0, $4)
       RETURNING *`,
-      [jobId, projectId, JSON.stringify(statePayload)]
+      [jobId, projectId, initialStep, JSON.stringify(statePayload)]
     );
 
     const job = jobRes.rows[0];
 
     // 3. Enqueue job in BullMQ queue (gracefully handle Redis connection)
     try {
-      await QueueService.enqueuePipelineJob(jobId, 'research', 0);
+      await QueueService.enqueuePipelineJob(jobId, initialStep, 0);
     } catch (err: any) {
       console.warn('[Project Route] Warning: BullMQ queue enqueue skipped or failed:', err.message);
     }

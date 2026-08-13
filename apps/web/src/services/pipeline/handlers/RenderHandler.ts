@@ -27,8 +27,8 @@ export class RenderHandler extends BaseHandler {
     const wordTimings = voice.wordTimings || voice.word_timings || stateAny['05_subtitles']?.subtitles || []
     const audioUrl = voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || ''
 
-    const profile = (context.project as any)?.generation_profile || {}
-    const aspectRatio = profile.target_aspect_ratio || '9:16'
+    const profile = context.generationProfile || (context.state as any)?.generationProfile || (context.project as any)?.generation_profile || {}
+    const aspectRatio = profile.aspect_ratio || profile.target_aspect_ratio || '9:16'
     let width = 1080
     let height = 1920
 

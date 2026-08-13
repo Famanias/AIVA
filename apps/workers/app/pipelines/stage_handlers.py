@@ -93,14 +93,15 @@ async def handle_script_direction_stage(
     job_id: str,
     topic: str,
     video_style: str,
-    outline: list[dict],
-    visual_type_weights: dict[str, float],
-    allowed_templates: list[str],
-    default_camera_pacing: str,
-    rig_action_list: list[str],
-    typography_template_list: list[str],
+    outline: list[dict] | None = None,
+    visual_type_weights: dict[str, float] | None = None,
+    allowed_templates: list[str] | None = None,
+    default_camera_pacing: str = "fast",
+    rig_action_list: list[str] | None = None,
+    typography_template_list: list[str] | None = None,
     language: str = "en",
     generation_profile: dict[str, Any] | None = None,
+    custom_script: str | None = None,
     # Legacy fallback only
     duration_target_minutes: int = 1,
 ) -> dict:
@@ -109,20 +110,25 @@ async def handle_script_direction_stage(
     llm = await get_llm_provider_async()
     agent = ScriptDirectorAgent(llm)
 
-    outline_text = "\n".join(
-        f"{p['index']}. {p['heading']}\n" + "\n".join(f"  - {kp}" for kp in p['keyPoints'])
-        for p in outline
-    )
+    if custom_script and custom_script.strip():
+        outline_text = f"USER CUSTOM SCRIPT (Break down this exact text into sequential visual scenes):\n{custom_script.strip()}"
+    elif outline:
+        outline_text = "\n".join(
+            f"{p.get('index', i+1)}. {p.get('heading', 'Section')}\n" + "\n".join(f"  - {kp}" for kp in p.get('keyPoints', []))
+            for i, p in enumerate(outline)
+        )
+    else:
+        outline_text = f"TOPIC: {topic}"
 
     output: ScriptDirectorOutput = await agent.run(
         topic=topic,
         video_style=video_style,
         outline=outline_text,
-        visual_type_weights=visual_type_weights,
-        allowed_templates=allowed_templates,
+        visual_type_weights=visual_type_weights or {},
+        allowed_templates=allowed_templates or [],
         default_camera_pacing=default_camera_pacing,
-        rig_action_list=rig_action_list,
-        typography_template_list=typography_template_list,
+        rig_action_list=rig_action_list or [],
+        typography_template_list=typography_template_list or [],
         language=language,
         generation_profile=generation_profile,
         duration_target_minutes=duration_target_minutes,
