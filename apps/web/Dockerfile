@@ -15,6 +15,7 @@ COPY apps/template-renderer/package.json /app/apps/template-renderer/package.jso
 
 # Install dependencies and build web
 RUN pnpm install --no-frozen-lockfile
+RUN pnpm --filter @aiva/shared-types build
 RUN pnpm --filter web build
 
 EXPOSE 3000

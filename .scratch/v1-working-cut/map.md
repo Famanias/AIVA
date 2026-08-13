@@ -18,6 +18,8 @@ A fully verified, fresh-clone operable Version 1 delivering all 4 core steps:
 ## Decisions so far
 
 - [01 Unify Database Layer and Pipeline Executor](issues/01-unify-database-layer-and-pipeline-executor.md) — Eliminated `@supabase/supabase-js` from `PipelineExecutor`, `PipelineLogger`, and API routes, unifying state persistence and job orchestration on local PostgreSQL (`@aiva/database`).
+- [02 Repair Monorepo Build and Shared Types Packaging](issues/02-repair-monorepo-build-and-shared-types.md) — Configured `prepare` script and Docker build steps for `@aiva/shared-types`, enabling clean clone builds without manual compilation.
+
 
 
 ## Not yet specified

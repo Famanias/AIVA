@@ -34,6 +34,7 @@ COPY apps/template-renderer /app/apps/template-renderer
 
 # Install dependencies and build
 RUN pnpm install --no-frozen-lockfile
+RUN pnpm --filter @aiva/shared-types build
 RUN pnpm --filter aiva-template-renderer build
 
 EXPOSE 3001
