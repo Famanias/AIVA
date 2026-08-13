@@ -306,6 +306,90 @@ Invoke-RestMethod -Uri "http://localhost:8000/pipeline/rerender_scene" -Method P
 ```
 **Expected Result:** Returns `{"status":"success","data":{...}}` with updated scene status.
 
+---
+
+## Phase 6: Container Build & Dockerfile Repair
+
+### What Was Implemented
+1. **Globstar Docker Exclusions (`.dockerignore`)**:
+   - Upgraded from flat patterns to globstar recursion: `**/node_modules`, `**/venv`, `**/.next`, `**/__pycache__`.
+   - Added `apps/web/scripts` (caused Windows `GetFileInformationByHandleEx` stat error during context load), plus `apps/workers/tests`, `infra/`, and `scripts/`.
+   - **Result:** Docker build context reduced from 724 MB → 4.74 MB.
+
+2. **Web Dockerfile Cross-Workspace Fix (`apps/web/Dockerfile`)**:
+   - Added `COPY apps/template-renderer/src /app/apps/template-renderer/src` — resolves `RenderHandler.ts`'s cross-workspace deep type import of `PipelineIR`.
+   - Added `COPY apps/template-renderer/package.json /app/apps/template-renderer/package.json` — lets pnpm install template-renderer's `react` dep so TypeScript can type-check it.
+
+3. **Workers Dockerfile & Requirements Repair (`apps/workers/Dockerfile` & `apps/workers/requirements.txt`)**:
+   - Corrected `CMD` to `["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]`.
+   - Removed `brave-search` (locked `httpx <0.26.0`, conflicting with `supabase`'s `>=0.26.0`) and pinned `supabase==2.31.0`.
+
+4. **Template Renderer Image Repair (`apps/template-renderer/Dockerfile` & `infra/docker-compose.yml`)**:
+   - Migrated from `npm install` to **pnpm** with a **monorepo-root build context** (`context: ..`, `dockerfile: apps/template-renderer/Dockerfile`), because the app declares `@aiva/shared-types: "workspace:*"` which npm cannot resolve (`EUNSUPPORTEDPROTOCOL`).
+   - Copies `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `packages/`, and **`tsconfig.base.json`** into the image (the app's `tsconfig.json` extends `../../tsconfig.base.json`).
+   - Builds with `pnpm --filter aiva-template-renderer build` — matching the package **name**, not the directory name.
+   - CMD set to `["pnpm", "--filter", "aiva-template-renderer", "start"]` (runs `node dist/render-server.js`).
+
+---
+
+### Files & Components Changed
+- `[MODIFY]` [`.dockerignore`](file:///d:/repos/AIVA/.dockerignore) — Globstar patterns; added `apps/web/scripts`, `apps/workers/tests`, `infra/`, `scripts/`.
+- `[MODIFY]` [`apps/web/Dockerfile`](file:///d:/repos/AIVA/apps/web/Dockerfile) — Added cross-workspace `template-renderer` src + package.json COPYs.
+- `[MODIFY]` [`apps/workers/Dockerfile`](file:///d:/repos/AIVA/apps/workers/Dockerfile) — Fixed uvicorn `CMD`.
+- `[MODIFY]` [`apps/workers/requirements.txt`](file:///d:/repos/AIVA/apps/workers/requirements.txt) — Removed `brave-search`, pinned `supabase==2.31.0`.
+- `[MODIFY]` [`apps/template-renderer/Dockerfile`](file:///d:/repos/AIVA/apps/template-renderer/Dockerfile) — Migrated to pnpm + monorepo build context; copies `tsconfig.base.json`.
+- `[MODIFY]` [`infra/docker-compose.yml`](file:///d:/repos/AIVA/infra/docker-compose.yml) — template-renderer build context now points at repo root.
+
+---
+
+### Automated Verification Performed
+
+1. **Workers Image Build**:
+   ```powershell
+   docker-compose -f infra/docker-compose.yml build workers
+   ```
+   **Result:** ✅ PASSED (`infra-workers` image built).
+
+2. **Web Image Build**:
+   ```powershell
+   docker-compose -f infra/docker-compose.yml build web
+   ```
+   **Result:** ✅ PASSED (`next build` compiled all 12/12 pages; image export completed; `infra-web` image built).
+
+3. **Template Renderer Image Build & Smoke Test**:
+   ```powershell
+   docker-compose -f infra/docker-compose.yml build template-renderer
+   docker run -d -p 3001:3001 infra-template-renderer:latest
+   Invoke-WebRequest -Uri http://localhost:3001/render -Method POST -Body '{"version":1,"templateFamily":"stickman"}' -ContentType "application/json"
+   ```
+   **Result:** ✅ PASSED (`tsc` compiled `dist/render-server.js`; container boots and logs `Template Renderer Framework active on port 3001`; `/render` route responds via error-handling catch block).
+
+---
+
+### Manual QA Instructions
+
+To manually verify Phase 6 on your machine, follow these steps:
+
+#### Step 1: Build All Container Images
+Run:
+```powershell
+docker-compose -f infra/docker-compose.yml build
+```
+
+#### Step 2: Verify Images Exist
+Run:
+```powershell
+docker images | Select-String "infra"
+```
+**Expected Output:** Lists `infra-workers`, `infra-web`, and `infra-template-renderer`.
+
+#### Step 3: Bring Up the Full Stack
+Run:
+```powershell
+docker-compose -f infra/docker-compose.yml up -d
+```
+**Expected Result:** `postgres`, `redis`, `workers`, `template-renderer`, and `web` containers start with healthchecks passing; `web` reachable at `http://localhost:3000` and `template-renderer` at `http://localhost:3001`.
+
 
 
 
