@@ -23,6 +23,7 @@ A fully verified, fresh-clone operable Version 1 delivering all 4 core steps:
 - [04 Persist Scenes and Asset Tagging](issues/04-persist-scenes-and-asset-tagging.md) — Persisted generated scenes to `public.scenes` and `public.scene_versions` with normalized visual types and linked foreign keys for immediate Timeline Studio consumption.
 - [05 Implement Parallel Scene Synthesis, Captions and Ducked Audio](issues/05-implement-parallel-scene-synthesis-and-ducked-audio.md) — Enabled concurrent per-scene TTS, preserved real word timings for SRT and burned captions, and wired FFmpeg `sidechaincompress` auto-ducking for background music.
 - [06 Implement True Single-Scene Re-render](issues/06-implement-true-single-scene-rerender.md) — Implemented targeted single-scene TTS re-synthesis, checkpoint syncing, and FFmpeg master re-composition reusing unchanged scene assets.
+- [07 Clean Clone End-to-End Verification](issues/07-clean-clone-end-to-end-verification.md) — Implemented comprehensive pipeline certifier (`scripts/certify_pipeline.ts`) covering topic brief generation, custom script bypass, single-scene timeline re-render, and media assets integrity. Verified 100% test passage and clean monorepo builds.
 
 
 
