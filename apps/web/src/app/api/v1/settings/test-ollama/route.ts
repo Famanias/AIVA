@@ -40,13 +40,13 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await res.json();
-    const models = (data.models || []).map((m: any) => m.name);
+    const models = (data.models || []).map((m: { name: string }) => m.name);
 
     return NextResponse.json({
       status: "success",
       connected: true,
       models,
-      message: `Connected to Ollama. Found ${models.length} model(s).`,
+      message: `Connected to Ollama. Detected ${models.length} local model(s).`,
     });
   } catch (error) {
     return NextResponse.json({

@@ -49,6 +49,7 @@ export default function SettingsPage() {
     message: string;
   } | null>(null);
   const [customModelMode, setCustomModelMode] = useState(false);
+  const [customOllamaModelMode, setCustomOllamaModelMode] = useState(false);
 
   const fetchSettings = async () => {
     try {
@@ -61,6 +62,8 @@ export default function SettingsPage() {
           fetched.llm_provider = "openai_compatible";
         }
         setForm((prev) => ({ ...prev, ...fetched }));
+        // Auto-detect local Ollama models on load
+        handleTestOllama(fetched.ollama_base_url || "http://localhost:11434");
       }
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -152,15 +155,17 @@ export default function SettingsPage() {
     }
   };
 
-  const handleTestOllama = async () => {
+  const handleTestOllama = async (targetBaseUrl?: string) => {
     setTestingOllama(true);
     setOllamaStatus(null);
+
+    const baseUrl = targetBaseUrl || form.ollama_base_url || "http://localhost:11434";
 
     try {
       const res = await fetch("/api/v1/settings/test-ollama", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ollama_base_url: form.ollama_base_url }),
+        body: JSON.stringify({ ollama_base_url: baseUrl }),
       });
       const data = await res.json();
       setOllamaStatus({
@@ -168,6 +173,15 @@ export default function SettingsPage() {
         models: data.models || [],
         message: data.message,
       });
+      if (data.connected && Array.isArray(data.models) && data.models.length > 0) {
+        setCustomOllamaModelMode(false);
+        setForm((prev) => {
+          if (!prev.ollama_model || !data.models.includes(prev.ollama_model)) {
+            return { ...prev, ollama_model: data.models[0] };
+          }
+          return prev;
+        });
+      }
     } catch (err) {
       setOllamaStatus({
         connected: false,
@@ -437,9 +451,9 @@ export default function SettingsPage() {
             </h2>
             <button
               type="button"
-              onClick={handleTestOllama}
+              onClick={() => handleTestOllama()}
               disabled={testingOllama}
-              className="px-3.5 py-1.5 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-sm flex items-center gap-2 transition"
+              className="px-3.5 py-1.5 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
             >
               {testingOllama && <RefreshCw className="animate-spin w-4 h-4" />}
               Test Connection
@@ -461,11 +475,6 @@ export default function SettingsPage() {
               )}
               <div>
                 <p className="font-medium">{ollamaStatus.message}</p>
-                {ollamaStatus.models.length > 0 && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Available models: {ollamaStatus.models.join(", ")}
-                  </p>
-                )}
               </div>
             </div>
           )}
@@ -485,17 +494,43 @@ export default function SettingsPage() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Target Model Name
-              </label>
-              <input
-                type="text"
-                name="ollama_model"
-                value={form.ollama_model}
-                onChange={handleChange}
-                placeholder="llama3.2 or deepseek-r1"
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              />
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-300">
+                  Detected Models
+                </label>
+                {ollamaStatus?.models && ollamaStatus.models.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setCustomOllamaModelMode(!customOllamaModelMode)}
+                    className="text-xs text-indigo-400 hover:text-indigo-300 transition"
+                  >
+                    {customOllamaModelMode ? "Select from detected list" : "Enter custom model name"}
+                  </button>
+                )}
+              </div>
+              {ollamaStatus?.models && ollamaStatus.models.length > 0 && !customOllamaModelMode ? (
+                <select
+                  name="ollama_model"
+                  value={form.ollama_model}
+                  onChange={handleChange}
+                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                >
+                  {ollamaStatus.models.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  name="ollama_model"
+                  value={form.ollama_model}
+                  onChange={handleChange}
+                  placeholder="llama3.2 or deepseek-r1"
+                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                />
+              )}
             </div>
           </div>
         </section>
