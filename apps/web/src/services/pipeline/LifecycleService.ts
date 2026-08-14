@@ -16,7 +16,7 @@ export class PauseError extends Error {
 
 export class LifecycleService {
   private static cache = new Map<string, { isCancelled: boolean; isPaused: boolean; expiresAt: number }>()
-  private static CACHE_TTL_MS = 2000
+  private static CACHE_TTL_MS = 500
 
   static async getLifecycleState(jobId: string): Promise<{ isCancelled: boolean; isPaused: boolean }> {
     const now = Date.now()

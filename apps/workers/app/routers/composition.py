@@ -3,6 +3,7 @@ from typing import Dict, Any
 
 from app.models.composition import CompositionModel
 from app.core.composition.engine import CompositionEngine
+from app.core.lifecycle import LifecycleService
 
 router = APIRouter()
 
@@ -11,6 +12,7 @@ async def composite_video(model: CompositionModel) -> Dict[str, Any]:
     """
     Executes the FFmpeg Media Composition Engine.
     """
+    await LifecycleService.throw_if_cancelled_async(model.job_id or model.trace_id)
     try:
         # In a full deployment, progress events could be written to a database
         # or pushed to a Redis pub/sub queue for the Dashboard to consume via WebSockets.

@@ -26,7 +26,7 @@ artifact_repo = ArtifactRepository()
 
 async def handle_research_stage(job_id: str, topic: str, language: str = "en") -> dict:
     """Executes the Research Agent."""
-    LifecycleService.throw_if_cancelled(job_id)
+    await LifecycleService.throw_if_cancelled_async(job_id)
     llm = await get_llm_provider_async()
     search = await get_search_provider_async()
     agent = ResearchAgent(llm, search)
@@ -60,7 +60,7 @@ async def handle_outline_stage(
     duration_target_minutes: int = 1,
 ) -> dict:
     """Executes the Outline Agent."""
-    LifecycleService.throw_if_cancelled(job_id)
+    await LifecycleService.throw_if_cancelled_async(job_id)
     llm = await get_llm_provider_async()
     agent = OutlineAgent(llm)
 
@@ -109,7 +109,7 @@ async def handle_script_direction_stage(
     duration_target_minutes: int = 1,
 ) -> dict:
     """Executes the combined Script + Director Agent."""
-    LifecycleService.throw_if_cancelled(job_id)
+    await LifecycleService.throw_if_cancelled_async(job_id)
     llm = await get_llm_provider_async()
     agent = ScriptDirectorAgent(llm)
 
@@ -170,7 +170,7 @@ async def handle_voiceover_stage(
     project_id: str | None = None,
 ) -> dict:
     """Executes the Voiceover Agent and stitches the master voice track."""
-    LifecycleService.throw_if_cancelled(job_id)
+    await LifecycleService.throw_if_cancelled_async(job_id)
     tts = await get_tts_provider_async()
     agent = VoiceoverAgent(tts)
     
@@ -246,7 +246,7 @@ async def handle_subtitle_extraction_stage(
     scene_voiceovers: list[dict],
 ) -> dict:
     """Executes the Subtitle Extraction Agent."""
-    LifecycleService.throw_if_cancelled(job_id)
+    await LifecycleService.throw_if_cancelled_async(job_id)
     logger.info("subtitle_extraction_stage", num_scenes=len(scene_voiceovers))
     
     subtitles = []

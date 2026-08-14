@@ -120,7 +120,11 @@ export class PipelineExecutor {
 
         // Final transition
         await query(
-          `UPDATE public.jobs SET current_step = 'cancelled', updated_at = NOW() WHERE id = $1`,
+          `UPDATE public.jobs 
+           SET cancelled_at = NOW(), 
+               cancel_reason = COALESCE(cancel_reason, 'User requested cancellation'), 
+               updated_at = NOW() 
+           WHERE id = $1`,
           [jobId]
         )
         await query(

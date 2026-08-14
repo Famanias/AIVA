@@ -1,5 +1,6 @@
--- Add 'cancelled' to video_status ENUM
+-- Add 'cancelled' and 'cancelling' to video_status ENUM
 ALTER TYPE video_status ADD VALUE IF NOT EXISTS 'cancelled';
+ALTER TYPE video_status ADD VALUE IF NOT EXISTS 'cancelling';
 
 -- Add cancellation tracking fields to jobs table
 ALTER TABLE jobs 

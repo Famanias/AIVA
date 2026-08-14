@@ -536,6 +536,7 @@ export type Database = {
         | "completed"
         | "cancelled"
         | "paused"
+        | "cancelling"
       video_style:
         | "stickman_animation"
         | "documentary"
@@ -707,6 +708,7 @@ export const Constants = {
         "completed",
         "cancelled",
         "paused",
+        "cancelling",
       ],
       video_style: [
         "stickman_animation",

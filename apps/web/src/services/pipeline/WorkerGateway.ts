@@ -35,7 +35,7 @@ export class WorkerGateway {
           abortController.abort(error)
           if (pollingInterval) clearInterval(pollingInterval)
         }
-      }, 5000)
+      }, 1000)
     }
 
     const timeoutSignal = AbortSignal.timeout(timeoutMs)
