@@ -44,6 +44,11 @@ export default function SettingsPage() {
 
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
+  const [fetchModelsStatus, setFetchModelsStatus] = useState<{
+    connected: boolean;
+    message: string;
+  } | null>(null);
+  const [customModelMode, setCustomModelMode] = useState(false);
 
   const fetchSettings = async () => {
     try {
@@ -71,14 +76,38 @@ export default function SettingsPage() {
 
   const handleFetchModels = async () => {
     setFetchingModels(true);
+    setFetchModelsStatus(null);
     try {
-      const res = await fetch("/api/v1/settings/models");
+      const res = await fetch("/api/v1/settings/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          llm_base_url: form.llm_base_url,
+          llm_api_key: form.llm_api_key,
+        }),
+      });
       const data = await res.json();
-      if (data.models) {
+      if (data.status === "success" && Array.isArray(data.models) && data.models.length > 0) {
         setAvailableModels(data.models);
+        setFetchModelsStatus({
+          connected: true,
+          message: data.message || `Found ${data.models.length} model(s).`,
+        });
+        setCustomModelMode(false);
+        if (!form.llm_model || !data.models.includes(form.llm_model)) {
+          setForm((prev) => ({ ...prev, llm_model: data.models[0] }));
+        }
+      } else {
+        setFetchModelsStatus({
+          connected: false,
+          message: data.message || "No models returned from endpoint.",
+        });
       }
     } catch (err) {
-      console.error(err);
+      setFetchModelsStatus({
+        connected: false,
+        message: (err as Error).message || "Failed to fetch models.",
+      });
     } finally {
       setFetchingModels(false);
     }
@@ -260,29 +289,68 @@ export default function SettingsPage() {
         {/* Unified LLM Configuration */}
         {form.llm_provider !== "ollama" && (
           <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
-            <h2 className="text-xl font-semibold text-white flex items-center gap-2 border-b border-gray-800 pb-3">
-              <Server className="w-5 h-5 text-indigo-400" /> OpenAI-Compatible LLM Configuration
-            </h2>
+            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
+                <Server className="w-5 h-5 text-indigo-400" /> OpenAI-Compatible LLM Configuration
+              </h2>
+              <button
+                type="button"
+                onClick={handleFetchModels}
+                disabled={fetchingModels || !form.llm_base_url}
+                className="px-3.5 py-1.5 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+              >
+                {fetchingModels ? <RefreshCw className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                Fetch Models
+              </button>
+            </div>
+
+            {fetchModelsStatus && (
+              <div
+                className={`p-3.5 rounded-lg text-sm flex items-center gap-3 border ${
+                  fetchModelsStatus.connected
+                    ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
+                    : "bg-amber-950/40 border-amber-500/40 text-amber-300"
+                }`}
+              >
+                {fetchModelsStatus.connected ? (
+                  <CheckCircle className="w-5 h-5 shrink-0 text-emerald-400" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 shrink-0 text-amber-400" />
+                )}
+                <div>
+                  <p className="font-medium">{fetchModelsStatus.message}</p>
+                </div>
+              </div>
+            )}
             
             <div className="flex flex-wrap gap-2 mb-2 items-center">
               <span className="text-sm text-gray-400">Presets:</span>
               <button
                 type="button"
-                onClick={() => setForm(prev => ({ ...prev, llm_base_url: "https://openrouter.ai/api/v1" }))}
+                onClick={() => {
+                  setForm(prev => ({ ...prev, llm_base_url: "https://openrouter.ai/api/v1" }));
+                  setFetchModelsStatus(null);
+                }}
                 className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
               >
                 Cloud / Direct (OpenRouter)
               </button>
               <button
                 type="button"
-                onClick={() => setForm(prev => ({ ...prev, llm_base_url: "http://localhost:20128/v1" }))}
+                onClick={() => {
+                  setForm(prev => ({ ...prev, llm_base_url: "http://localhost:20128/v1" }));
+                  setFetchModelsStatus(null);
+                }}
                 className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
               >
                 Local Gateway (OmniRoute)
               </button>
               <button
                 type="button"
-                onClick={() => setForm(prev => ({ ...prev, llm_base_url: "http://localhost:11434/v1" }))}
+                onClick={() => {
+                  setForm(prev => ({ ...prev, llm_base_url: "http://localhost:11434/v1" }));
+                  setFetchModelsStatus(null);
+                }}
                 className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
               >
                 Local Hardware (Ollama /v1)
@@ -319,11 +387,22 @@ export default function SettingsPage() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Model ID
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-300">
+                    Model ID
+                  </label>
+                  {availableModels.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomModelMode(!customModelMode)}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition"
+                    >
+                      {customModelMode ? "Select from list" : "Enter custom model ID"}
+                    </button>
+                  )}
+                </div>
                 <div className="flex gap-3">
-                  {availableModels.length > 0 ? (
+                  {availableModels.length > 0 && !customModelMode ? (
                     <select
                       name="llm_model"
                       value={form.llm_model}
@@ -344,15 +423,6 @@ export default function SettingsPage() {
                       className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
                     />
                   )}
-                  <button
-                    type="button"
-                    onClick={handleFetchModels}
-                    disabled={fetchingModels || !form.llm_base_url}
-                    className="px-4 py-2.5 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
-                  >
-                    {fetchingModels ? <RefreshCw className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
-                    Fetch Models
-                  </button>
                 </div>
               </div>
             </div>
