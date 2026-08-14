@@ -20,7 +20,7 @@ export async function GET(req: Request) {
                 SELECT row_to_json(j.*)
                 FROM public.jobs j
                 WHERE j.project_id = p.id
-                ORDER BY j.created_at DESC
+                ORDER BY j.updated_at DESC
                 LIMIT 1
               ) AS job
        FROM public.projects p

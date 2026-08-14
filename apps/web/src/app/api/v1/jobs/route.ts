@@ -27,7 +27,7 @@ export async function GET(req: Request) {
     }
 
     params.push(limit)
-    sql += ` ORDER BY j.created_at DESC LIMIT $${params.length}`
+    sql += ` ORDER BY j.updated_at DESC LIMIT $${params.length}`
 
     const res = await query(sql, params)
     return NextResponse.json({ status: 'success', data: res.rows })
