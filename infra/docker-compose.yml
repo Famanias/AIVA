@@ -1,20 +1,20 @@
 
 
 # =============================================================================
-# AIVA — Local Development Stack
-# Phase 1: Single-VPS docker-compose deployment
+# AIVA — Local Development & Self-Hosted Stack
 #
-# Services:
-#   redis           — BullMQ queue backing store
+# Core Backing Services:
+#   postgres        — Standalone PostgreSQL 16 with pgvector extension
+#   redis           — BullMQ queue and cache backing store
+# Application Services (optional containerized deployment):
 #   workers         — Python FastAPI (agents, TTS, B-roll, FFmpeg)
 #   template-renderer — Node.js Remotion + Puppeteer worker
 #   web             — Next.js frontend + API
 #
-# Database: External (managed Supabase) — not included here.
-#
 # Usage:
-#   1. Copy .env.example to .env and fill in your values
-#   2. docker-compose up --build
+#   1. Start DB & Queue: pnpm services:up  (or docker compose -f infra/docker-compose.yml up -d postgres redis)
+#   2. Apply Migrations: pnpm db:migrate
+#   3. Run Local Dev:    pnpm dev
 # =============================================================================
 
 services:

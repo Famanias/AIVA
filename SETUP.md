@@ -9,9 +9,8 @@ Before you begin, ensure you have the following installed on your system:
 - **Node.js**: v20.0.0 or higher
 - **pnpm**: v9.0.0 or higher
 - **Python**: v3.11 or higher
-- **Docker & Docker Compose**: Required for running Redis and optionally the Python ML workers.
-- **Supabase CLI**: For local database development. Install via `npm i -g supabase` or Homebrew.
-- **FFmpeg**: Required if running the Python workers natively (without Docker).
+- **Docker & Docker Compose**: For PostgreSQL (with `pgvector`) and Redis queue.
+- **FFmpeg**: Required for audio and video composition.
 
 ## 2. Initial Setup
 
@@ -21,55 +20,38 @@ Before you begin, ensure you have the following installed on your system:
    cd AIVA
    ```
 
-2. **Bootstrap the Monorepo:**
-   Install all Node.js dependencies and validate the Supabase migrations. 
-   *(Note: This step spins up a temporary local Supabase emulator to generate TypeScript types and validate the schema, then tears it down).*
+2. **Install Monorepo Dependencies:**
    ```bash
-   pnpm bootstrap
+   pnpm install
    ```
 
-## 3. Environment Variables
+## 3. Infrastructure & Database Setup
 
-AIVA requires various API keys to function. 
+1. **Start Backing Services (PostgreSQL & Redis):**
+   ```bash
+   pnpm services:up
+   ```
+
+2. **Apply Database Schema & Migrations:**
+   ```bash
+   pnpm db:migrate
+   ```
+
+## 4. Environment Variables
 
 1. Copy the example environment file:
    ```bash
    cp .env.example .env
    ```
 
-2. Open `.env` and configure your necessary keys. For local testing, at minimum, you will need:
-   - **Supabase Keys**: See the *Database Setup* section below.
+2. Open `.env` and configure your necessary keys:
+   - `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aiva`
+   - `AIVA_AUTH_MODE=local`
    - **LLM Provider**: e.g., `GEMINI_API_KEY` (if `LLM_PROVIDER=gemini`).
    - **Search Provider**: e.g., `TAVILY_API_KEY` (if `SEARCH_PROVIDER=tavily`).
-   - **Security**: Generate a random 32-byte hex key for `DATABASE_ENCRYPTION_KEY` (e.g., run `openssl rand -hex 32`).
+   - **Security**: Generate a random 32-byte hex key for `DATABASE_ENCRYPTION_KEY` (e.g. `openssl rand -hex 32`).
 
-## 4. Database Setup (Supabase)
 
-You can choose to use a cloud-managed Supabase project or run it locally.
-
-### Option A: Local Supabase (Recommended for Dev)
-Start the local Supabase emulator. It will run in Docker and persist data locally.
-```bash
-npx supabase start
-```
-*After starting, the CLI will output your local `API URL`, `anon key`, and `service_role key`. Update your `.env` file with these values for `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.*
-
-if the command failed, try this:
-```bash
-npx supabase start -x studio
-```
-
-if it says supabase start already running and throws an error, try this:
-```bash
-npx supabase stop
-npx supabase start -x studio
-```
-
-### Option B: Cloud Supabase
-If using a managed project at app.supabase.com:
-1. Link your project: `npx supabase link --project-ref your-project-ref`
-2. Push the migrations: `npx supabase db push`
-3. Update your `.env` with the cloud keys.
 
 ## 5. Running the Application
 

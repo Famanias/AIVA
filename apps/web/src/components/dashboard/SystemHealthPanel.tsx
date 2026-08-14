@@ -45,10 +45,10 @@ export function SystemHealthPanel() {
           
           <div className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-2 text-zinc-300">
-              <Server className="w-4 h-4 text-zinc-500" /> Supabase
+              <Server className="w-4 h-4 text-zinc-500" /> PostgreSQL
             </span>
             <span className="flex items-center gap-2 text-zinc-400">
-              {health.infrastructure.supabase} <StatusIcon status={health.infrastructure.supabase} />
+              {health.infrastructure.postgres} <StatusIcon status={health.infrastructure.postgres} />
             </span>
           </div>
 

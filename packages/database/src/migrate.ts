@@ -63,7 +63,7 @@ async function runMigrations() {
       executedMigrations.clear();
     }
 
-    const migrationsDir = path.join(__dirname, "../supabase/migrations");
+    const migrationsDir = path.join(__dirname, "../migrations");
     if (!fs.existsSync(migrationsDir)) {
       throw new Error(`Migrations directory not found at ${migrationsDir}`);
     }
@@ -95,7 +95,7 @@ async function runMigrations() {
       console.log(`✓ Successfully applied: ${file}`);
     }
 
-    const seedPath = path.join(__dirname, "../supabase/seed.sql");
+    const seedPath = path.join(__dirname, "../seed.sql");
     if (fs.existsSync(seedPath)) {
       console.log("\n3. Executing seed script (seed.sql)...");
       const seedSql = fs.readFileSync(seedPath, "utf-8");

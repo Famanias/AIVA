@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -11,21 +10,21 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
   const handleAuth = async (action: 'login' | 'signup') => {
     setIsLoading(true)
     setError('')
     try {
-      const { error } = action === 'login' 
-        ? await supabase.auth.signInWithPassword({ email, password })
-        : await supabase.auth.signUp({ email, password })
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, action }),
+      })
 
-      if (error) throw error
-      
+      const data = await res.json()
+      if (!res.ok || data.status === 'error') {
+        throw new Error(data.error || 'Authentication failed')
+      }
+
       router.push('/')
       router.refresh()
     } catch (err: any) {

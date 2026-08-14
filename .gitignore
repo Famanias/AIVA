@@ -65,8 +65,5 @@ apps/workers/models/sdxl/
 /implementation plans/*
 .artifacts/
 
-# Supabase local emulator state
-supabase/.temp/
-supabase/.branches/
 /storage
 apps/workers/storage/

@@ -6,16 +6,14 @@ This guide provides step-by-step instructions on where to get every possible API
 
 ---
 
-## 1. Database & Auth (Supabase)
-*If you are using the local emulator (`npx supabase start`), these keys are printed in your terminal and you don't need a cloud account. If you are using a cloud-hosted Supabase project, follow these steps.*
+## 1. Database & Queue Backing Store (Local PostgreSQL & Redis)
+AIVA is 100% local-first and self-hosted. It does **not** require any cloud database account or Supabase API keys.
 
-1. Go to [Supabase](https://supabase.com/) and create a free account.
-2. Create a new Project.
-3. Once the project is created, go to **Project Settings** (gear icon in the bottom left).
-4. Click on **API** under the Configuration section.
-5. Here you will find your:
-   - **Project URL** (`NEXT_PUBLIC_SUPABASE_URL`)
-   - **Project API Keys**: You need the `anon` `public` key (`NEXT_PUBLIC_SUPABASE_ANON_KEY`) and the `service_role` `secret` key (`SUPABASE_SERVICE_ROLE_KEY`).
+1. **PostgreSQL & Redis**:
+   - Run `pnpm services:up` (or `docker compose -f infra/docker-compose.yml up -d postgres redis`).
+   - Run `pnpm db:migrate` to apply all database tables and seed data.
+   - Configure `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aiva` in `.env`.
+   - Configure `AIVA_AUTH_MODE=local` for zero-config single-user local development.
 
 ---
 

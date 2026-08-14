@@ -6,7 +6,7 @@ AIVA is a configurable AI video generation platform. Phase 1 focuses on fast, hi
 
 ## High-Level Architecture
 
-The platform operates via an event-driven orchestration layer. The Next.js frontend acts as the dispatcher, writing to a Supabase database and dropping jobs into a Redis-backed BullMQ queue. A fleet of isolated Python and Node.js workers process these jobs stage-by-stage.
+The platform operates via an event-driven orchestration layer. The Next.js frontend acts as the dispatcher, writing to a standalone PostgreSQL database and dropping jobs into a Redis-backed BullMQ queue. A fleet of isolated Python and Node.js workers process these jobs stage-by-stage.
 
 1. **AI Agent Chain**: Python workers execute Research, Outline, and Script generation using abstract LLM providers.
 2. **Audio Pipeline**: Self-hosted TTS models (Kokoro/Coqui) generate narration, and Faster-Whisper extracts deterministic word-level timings.
@@ -25,7 +25,7 @@ This is a Turborepo monorepo:
 │   ├── workers/              # Python FastAPI ML/AV Workers
 │   └── template-renderer/    # Node.js Remotion worker
 ├── packages/
-│   ├── database/             # Supabase schema, migrations, and seeds
+│   ├── database/             # PostgreSQL migrations, seed data, and connection pool
 │   ├── shared-types/         # Cross-boundary TS interfaces
 │   └── prompt-library/       # Versioned agent prompt templates
 ├── infra/                    # Docker Compose and deployment config
@@ -36,7 +36,7 @@ This is a Turborepo monorepo:
 ## Technology Stack
 
 - **Frontend**: Next.js 16, Tailwind v4
-- **Database**: Supabase (PostgreSQL)
+- **Database**: Standalone PostgreSQL 16 (with pgvector)
 - **Queue**: BullMQ + Redis
 - **Workers**: Python (FastAPI), Node.js (Remotion)
 - **Video Processing**: FFmpeg (h264_nvenc / libx264)
@@ -63,29 +63,31 @@ This is a Turborepo monorepo:
 - pnpm 9+
 - Python 3.11+
 - Docker & Docker Compose
-- Supabase CLI
+- FFmpeg
 
 ### Setup
 
-1. **Bootstrap the environment**
-   This installs all dependencies, starts the local Supabase emulator, and applies all migrations:
+1. **Install Dependencies**
    ```bash
-   pnpm bootstrap
+   pnpm install
    ```
 
 2. **Configure Environment Variables**
-   Copy the example environment file and fill in your API keys (e.g., Gemini, Pexels):
    ```bash
    cp .env.example .env
    ```
 
-3. **Start the Infrastructure**
-   Start Redis and any supporting containers:
+3. **Start Backing Services (PostgreSQL & Redis)**
    ```bash
-   docker compose -f infra/docker-compose.yml up -d
+   pnpm services:up
    ```
 
-4. **Run the Application**
+4. **Apply Database Migrations**
+   ```bash
+   pnpm db:migrate
+   ```
+
+5. **Run the Application**
    Use Turborepo to spin up the Next.js frontend, Python workers, and Remotion server:
    ```bash
    pnpm dev

@@ -1,10 +1,49 @@
 import { NextResponse } from 'next/server';
 import { query } from '@aiva/database';
 import { QueueService } from '../../../../services/queue.service';
+import { getAuthenticatedUser } from '../../../../lib/auth/session';
 import crypto from 'crypto';
+
+export async function GET(req: Request) {
+  try {
+    const user = getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ status: 'error', error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const limit = parseInt(searchParams.get('limit') || '50', 10);
+
+    const res = await query(
+      `SELECT p.*,
+              (
+                SELECT row_to_json(j.*)
+                FROM public.jobs j
+                WHERE j.project_id = p.id
+                ORDER BY j.created_at DESC
+                LIMIT 1
+              ) AS job
+       FROM public.projects p
+       WHERE p.user_id = $1 OR $2 = 'local'
+       ORDER BY p.created_at DESC
+       LIMIT $3`,
+      [user.id, process.env.AIVA_AUTH_MODE || 'local', limit]
+    );
+
+    return NextResponse.json({ status: 'success', data: res.rows });
+  } catch (err: any) {
+    console.error('[Projects Route GET] Error:', err);
+    return NextResponse.json({ status: 'error', error: err.message }, { status: 500 });
+  }
+}
 
 export async function POST(req: Request) {
   try {
+    const user = getAuthenticatedUser(req);
+    if (!user) {
+      return NextResponse.json({ status: 'error', error: 'Unauthorized: Missing user authentication session' }, { status: 401 });
+    }
+
     const body = await req.json();
     const {
       topic = 'Untitled Topic',
@@ -25,19 +64,7 @@ export async function POST(req: Request) {
       : `Video: ${topic}`;
 
     const durationMinutes = Math.max(1, Math.round((duration_target_seconds || 60) / 60));
-
-    // Resolve user ID from request headers or auth session
-    const headerUserId = req.headers.get('x-user-id');
-    let userId = headerUserId || null;
-
-    if (!userId) {
-      const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NEXT_PUBLIC_SUPABASE_URL;
-      if (isLocalDev) {
-        userId = '00000000-0000-0000-0000-000000000000';
-      } else {
-        return NextResponse.json({ status: 'error', error: 'Unauthorized: Missing user authentication session' }, { status: 401 });
-      }
-    }
+    const userId = user.id;
 
     // 1. Insert Project into PostgreSQL
     const projectRes = await query(

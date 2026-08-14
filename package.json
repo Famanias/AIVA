@@ -11,6 +11,9 @@
     "clean": "turbo clean && rimraf node_modules",
     "test:pipeline": "tsx scripts/certify_pipeline.ts --suite=golden",
     "db:migrate": "pnpm --filter @aiva/database migrate",
+    "services:up": "docker compose -f infra/docker-compose.yml up -d postgres redis",
+    "services:down": "docker compose -f infra/docker-compose.yml down",
+    "services:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "bootstrap": "pnpm install && node packages/database/scripts/validate_migrations.mjs",
     "certify": "cross-env CI_MOCK_PROVIDERS=true pnpm test:pipeline"
   },

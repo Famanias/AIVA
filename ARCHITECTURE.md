@@ -9,7 +9,7 @@ AIVA is an event-driven, distributed system. The orchestration is handled centra
 ```mermaid
 graph TD
     UI[Next.js Client] --> API[Next.js API Routes]
-    API --> DB[(Supabase PostgreSQL)]
+    API --> DB[(Standalone PostgreSQL 16 + pgvector)]
     API --> Q[BullMQ / Redis]
     
     Q --> W_AI[Python AI Workers]
@@ -28,13 +28,13 @@ graph TD
 ## Core Components
 
 ### 1. Next.js Orchestrator & UI (`apps/web`)
-Acts as the central nervous system. It manages user authentication (via Supabase Auth), accepts topic submissions, writes the initial job state to the database, and dispatches the job to BullMQ. It also includes a dedicated local media proxy (`/api/media`) to stream generated pipeline artifacts (audio/video) directly from the filesystem to the browser, bypassing strict local-resource browser security policies.
+Acts as the central nervous system. It manages user authentication (via local session management / `AIVA_AUTH_MODE`), accepts topic submissions, writes the initial job state to PostgreSQL, and dispatches the job to BullMQ. It also includes a dedicated local media proxy (`/api/v1/storage`) to stream generated pipeline artifacts (audio/video) directly from the filesystem to the browser.
 
 ### 2. Job Queue (`BullMQ` + `Redis`)
-All inter-service coordination happens through a Redis-backed BullMQ queue. The pipeline execution is stateful and resumable. If a Python worker crashes during a 30-minute render, the queue guarantees a retry with exponential backoff.
+All inter-service coordination happens through a Redis-backed BullMQ queue. The pipeline execution is stateful and resumable. If a Python worker crashes during a render, the queue guarantees a retry with exponential backoff.
 
-### 3. Database (`Supabase`)
-The central source of truth. The schema normalizes `projects`, `jobs`, `scenes` (and their `scene_versions`), `animation_rigs`, and `cost_ledger_entries`. Row Level Security (RLS) guarantees data isolation.
+### 3. Database (`PostgreSQL 16` + `pgvector`)
+The central source of truth. The schema normalizes `projects`, `jobs`, `scenes`, `animation_rigs`, and `cost_ledger_entries`. Both Next.js (`pg`) and Python workers (`asyncpg`) communicate directly with PostgreSQL via local connection pooling.
 
 ### 4. Python ML/AV Workers (`apps/workers`)
 A FastAPI-based Python fleet responsible for:

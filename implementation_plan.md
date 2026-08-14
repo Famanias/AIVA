@@ -1,177 +1,147 @@
-# Implementation Plan — AIVA Working Version 1 (V1 Working Cut)
+# Database Strategy & Migration Plan: Supabase to Local-First PostgreSQL (Revised)
 
-This implementation plan defines the complete, milestone-by-milestone engineering work to resolve all 7 tickets in [`.scratch/v1-working-cut/issues/`](file:///d:/repos/AIVA/.scratch/v1-working-cut/issues/) and deliver a verified, fresh-clone operable Version 1 of AIVA.
+## 1. Executive Summary & Review Synthesis
 
----
+AIVA is a **local-first, self-hosted AI video production platform**. This revised plan addresses every finding identified in [`review-implementation-plan-verdict.md`](file:///d:/repos/AIVA/review-implementation-plan-verdict.md):
 
-## User Review Required
-
-> [!IMPORTANT]
-> - **Milestone 1** removes `@supabase/supabase-js` from [`PipelineExecutor.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/PipelineExecutor.ts), `jobs/*` API routes, and event loggers, standardizing 100% on direct `@aiva/database` (`pg.Pool`) queries.
-> - **Milestone 3** enables custom script bypass: when `input_mode === 'custom_script'`, the pipeline skips `research` and `outline` and starts directly at `script_direction`.
-> - **Milestone 5** introduces parallel scene generation using `asyncio.gather` for per-scene TTS, stock/SDXL asset download, and Remotion scene clip rendering, alongside real word timings and background music auto-ducking (`sidechaincompress`).
-> - **Milestone 6** upgrades single-scene re-render from a metadata status flip to true asset re-generation and selective FFmpeg master re-composition.
-
----
-
-## Open Questions
-
-None — all architectural decisions were grilled and approved in Round 1.
+1. **Database Selection**: Reconfirms **Pure Local PostgreSQL 16 (with `pgvector`)** over SQLite. SQLite would require an 80–90% rewrite of the query layer, break Python `asyncpg` async pools, lose native `JSONB`/UUID/triggers, and create multi-process write-lock contention during parallel rendering.
+2. **Infrastructure Canonical Source**: Reconciles Docker Compose by extending [`infra/docker-compose.yml`](file:///d:/repos/AIVA/infra/docker-compose.yml) (preserving `pgvector/pgvector:pg16` and Redis) instead of adding a conflicting root compose.
+3. **Missing API Endpoints**: Explicitly specifies implementing `GET /api/v1/projects`, `GET /api/v1/jobs`, and `GET /api/v1/jobs/[id]/events` before replacing client-side Supabase SDK calls.
+4. **Auth Replacement (Zero Regression)**: Replaces Supabase Auth with a lightweight, self-hosted session manager (`apps/web/src/lib/auth/session.ts`) supporting single-user zero-config local mode and cookie-signed auth for protected self-hosted setups.
+5. **Safe Migration Restructuring**: Physically moves the 8 migration files and `seed.sql` to `packages/database/migrations/` and updates [`packages/database/src/migrate.ts`](file:///d:/repos/AIVA/packages/database/src/migrate.ts) atomically in the same step.
+6. **Full Consumer Inventory**: Documents and decouples all 7 Supabase-dependent files across the frontend, telemetry, and job control routes.
+7. **Documentation Synchronization (Rule 12)**: Synchronizes `SETUP.md`, `README.md`, `.env.example`, `ARCHITECTURE.md`, `docs/EDD.md`, and creates `docs/adr/005-local-first-postgresql-migration.md`.
 
 ---
 
-## Proposed Changes
+## 2. Proposed Changes by Component
 
----
+### Component 1: Infrastructure & Package Scripts (Reconciled)
 
-### Milestone 1: Unify Database Layer & Pipeline Executor (Ticket 01)
-
-Eliminate `@supabase/supabase-js` from [`PipelineExecutor.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/PipelineExecutor.ts), `jobs` routes, and telemetry loggers. Standardize on direct `@aiva/database` connection pool queries.
-
-#### [MODIFY] [PipelineExecutor.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/PipelineExecutor.ts)
-- Replace `createClient<Database>` with `query` from `@aiva/database`.
-- Rewrite job & project fetching using parameterized SQL: `SELECT j.*, row_to_json(p.*) as project FROM public.jobs j JOIN public.projects p ON j.project_id = p.id WHERE j.id = $1`.
-- Rewrite job status/progress/`state_payload` updates and `job_events` insertions using SQL queries.
-- Update `calculateProgress` and lifecycle checks to operate purely on Postgres state.
-
-#### [MODIFY] [PipelineLogger.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/PipelineLogger.ts)
-- Update logger to insert log rows directly via `@aiva/database` `query()`.
-
-#### [MODIFY] [LifecycleService.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/LifecycleService.ts)
-- Query job and project cancellation/pause states via `@aiva/database`.
-
-#### [MODIFY] [apps/web/src/app/api/v1/jobs/[id]/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/[id]/route.ts)
-- Replace Supabase client with parameterized `SELECT * FROM public.jobs WHERE id = $1`.
-
-#### [MODIFY] [apps/web/src/app/api/v1/jobs/[id]/events/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/[id]/events/route.ts)
-- Replace Supabase client with parameterized `SELECT * FROM public.job_events WHERE job_id = $1 ORDER BY created_at ASC`.
-
-#### [MODIFY] [apps/web/src/app/api/v1/projects/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/route.ts)
-- Restore session validation / user extraction and handle fallback cleanly.
-
----
-
-### Milestone 2: Repair Monorepo Build & Shared Types Packaging (Ticket 02)
-
-Ensure clean git checkouts compile and run without requiring untracked manual builds.
-
-#### [MODIFY] [packages/shared-types/package.json](file:///d:/repos/AIVA/packages/shared-types/package.json)
-- Add `"build": "tsc"`, `"prepare": "tsc"`.
-- Ensure exports correctly resolve `.d.ts` and `.js` declarations for monorepo consumers.
+#### [MODIFY] [infra/docker-compose.yml](file:///d:/repos/AIVA/infra/docker-compose.yml)
+- Retain `pgvector/pgvector:pg16` and `redis:7-alpine` as the canonical local development & self-hosting backing store.
+- Update comments and headers to clarify that database is local standalone PostgreSQL (not external Supabase).
 
 #### [MODIFY] [package.json](file:///d:/repos/AIVA/package.json)
-- Ensure root `build` script triggers `@aiva/shared-types` compilation before dependent workspaces (`pnpm --filter @aiva/shared-types build && pnpm --filter ...`).
-
-#### [MODIFY] [apps/web/Dockerfile](file:///d:/repos/AIVA/apps/web/Dockerfile)
-- Ensure `@aiva/shared-types` is built in the builder stage before `pnpm --filter web build`.
+- Add top-level orchestration scripts targeting `infra/docker-compose.yml`:
+  ```json
+  "services:up": "docker compose -f infra/docker-compose.yml up -d postgres redis",
+  "services:down": "docker compose -f infra/docker-compose.yml down",
+  "services:logs": "docker compose -f infra/docker-compose.yml logs -f"
+  ```
 
 ---
 
-### Milestone 3: Wire Brief Parameters & Custom Script Bypass (Ticket 03)
+### Component 2: Unified Migrations in `@aiva/database`
 
-Consume user brief parameters throughout all pipeline handlers and bypass `research`/`outline` for pasted scripts.
+#### [NEW DIRECTORY] `packages/database/migrations/`
+- Move all 8 active migration files from `packages/database/supabase/migrations/` to `packages/database/migrations/`:
+  - `20260718000000_core_schema.sql`
+  - `20260718115941_job_events.sql`
+  - `20260718120000_grants.sql`
+  - `20260719000000_add_assets_job_step.sql`
+  - `20260720000000_add_pipeline_logs.sql`
+  - `20260720100000_add_cancellation_states.sql`
+  - `20260720110000_add_pause_states.sql`
+  - `20260812000000_app_settings.sql`
+
+#### [MOVE] `packages/database/supabase/seed.sql` ➔ `packages/database/seed.sql`
+- Move `seed.sql` to package root.
+
+#### [MODIFY] [packages/database/src/migrate.ts](file:///d:/repos/AIVA/packages/database/src/migrate.ts)
+- Update migration path resolver:
+  ```ts
+  const migrationsDir = path.join(__dirname, "../migrations");
+  const seedPath = path.join(__dirname, "../seed.sql");
+  ```
+
+#### [DELETE] [supabase/](file:///d:/repos/AIVA/supabase) & [packages/database/supabase/](file:///d:/repos/AIVA/packages/database/supabase)
+- Remove obsolete duplicate directories after physical migration.
+
+---
+
+### Component 3: Local Authentication Successor
+
+#### [NEW] [apps/web/src/lib/auth/session.ts](file:///d:/repos/AIVA/apps/web/src/lib/auth/session.ts)
+- Implement self-hosted session helper:
+  - `getAuthenticatedUser(req: Request)`: Reads `x-user-id` header or `aiva_session` cookie. In development or single-user mode, defaults to `00000000-0000-0000-0000-000000000000` (`local@aiva.internal`).
+  - `createSessionToken(user)` / `validateSessionToken(token)`: HMAC-SHA256 session token signed with `APP_SECRET`.
+
+#### [NEW] [apps/web/src/app/api/v1/auth/login/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/auth/login/route.ts)
+- Endpoint for local login verifying user in `auth.users` (or auto-authenticating default local admin) and setting `aiva_session` HTTP-only cookie.
+
+#### [MODIFY] [apps/web/src/app/login/page.tsx](file:///d:/repos/AIVA/apps/web/src/app/login/page.tsx)
+- Replace `@supabase/ssr` `signInWithPassword`/`signUp` with local `fetch('/api/v1/auth/login')`.
+
+#### [MODIFY] [apps/web/src/proxy.ts](file:///d:/repos/AIVA/apps/web/src/proxy.ts)
+- Extract session cookie or assign local default user ID to `x-user-id` header on incoming requests.
+
+---
+
+### Component 4: REST API Read/List Endpoints
 
 #### [MODIFY] [apps/web/src/app/api/v1/projects/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/route.ts)
-- When `input_mode === 'custom_script'`, set initial job `current_step` to `'script_direction'`.
-- Package `generation_profile` with `voice_id`, `aspect_ratio`, `duration_target_seconds`, and `persona` into `state_payload`.
-- Enqueue BullMQ job starting at `script_direction` if custom script.
+- Add `GET` handler: Queries `public.projects` joined with active `public.jobs` and returns `{ status: 'success', data: projects }` ordered by `created_at DESC`.
 
-#### [MODIFY] [apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts)
-- Read `voice_id` dynamically from `context.state.generationProfile?.voice_id` or `context.state.voice_id`, falling back to default voice.
+#### [NEW] [apps/web/src/app/api/v1/jobs/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/route.ts)
+- Add `GET` handler: Queries `public.jobs` with filtering by project/status.
 
-#### [MODIFY] [apps/web/src/services/pipeline/handlers/CompositionHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts)
-- Read `aspect_ratio`, target dimensions (`width`, `height`), and pacing from `generation_profile`.
-
-#### [MODIFY] [apps/workers/app/agents/script_director_agent.py](file:///d:/repos/AIVA/apps/workers/app/agents/script_director_agent.py)
-- Support custom script input mode: segment and direct the user-provided script directly into scene breakdown objects without requiring a research outline.
+#### [NEW] [apps/web/src/app/api/v1/jobs/[id]/events/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/%5Bid%5D/events/route.ts)
+- Add `GET` handler: Returns job status, recent `job_events`, and `pipeline_logs` for live dashboard telemetry.
 
 ---
 
-### Milestone 4: Persist Scenes & Asset Tagging to PostgreSQL (Ticket 04)
+### Component 5: Decouple Frontend Providers & Job Routes
 
-Write scene breakdowns to `public.scenes` and `public.scene_versions` so Timeline Studio displays real data.
+#### [MODIFY] [apps/web/src/providers/OperationsDashboardProvider.tsx](file:///d:/repos/AIVA/apps/web/src/providers/OperationsDashboardProvider.tsx)
+- Remove `createBrowserClient` and Supabase realtime channels.
+- Implement data loader fetching from `GET /api/v1/projects` with lightweight 3s interval polling and manual `refresh()`.
 
-#### [MODIFY] [apps/web/src/services/pipeline/handlers/ScriptHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/ScriptHandler.ts)
-- After receiving `sceneDirections` from the worker, insert each scene into `public.scenes` (`id`, `project_id`, `sequence_number`, `duration`, `render_status`) and `public.scene_versions` (`id`, `scene_id`, `version_number`, `script_segment`, `visual_type`, `visual_prompt`).
-- Ensure each scene is tagged with explicit asset types (`stock_photo`, `ai_image`, `character_animation`).
+#### [MODIFY] [apps/web/src/providers/DashboardProvider.tsx](file:///d:/repos/AIVA/apps/web/src/providers/DashboardProvider.tsx)
+- Remove `createBrowserClient` and 4 Supabase channel subscriptions.
+- Fetch active telemetry from `GET /api/v1/jobs/${jobId}/events` with 2s polling while job is running.
 
-#### [MODIFY] [apps/web/src/app/(dashboard)/projects/[id]/timeline/page.tsx](file:///d:/repos/AIVA/apps/web/src/app/(dashboard)/projects/[id]/timeline/page.tsx)
-- Ensure timeline fetches and updates real database scenes and scene versions.
+#### [MODIFY] [apps/web/src/components/dashboard/SystemHealthPanel.tsx](file:///d:/repos/AIVA/apps/web/src/components/dashboard/SystemHealthPanel.tsx) & [apps/web/src/types/telemetry.ts](file:///d:/repos/AIVA/apps/web/src/types/telemetry.ts)
+- Replace Supabase indicator with `PostgreSQL Database` (`health.infrastructure.postgres`).
 
----
+#### [MODIFY] [apps/web/src/app/api/v1/jobs/pause/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/pause/route.ts)
+#### [MODIFY] [apps/web/src/app/api/v1/jobs/resume/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/resume/route.ts)
+#### [MODIFY] [apps/web/src/app/api/v1/jobs/stop/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/stop/route.ts)
+- Remove `@supabase/ssr` `createServerClient`. Use `getAuthenticatedUser(req)` for user verification.
 
-### Milestone 5: Implement Parallel Scene Synthesis, Captions & Ducked Audio (Ticket 05)
+#### [DELETE] [apps/web/lib/supabase/client.ts](file:///d:/repos/AIVA/apps/web/lib/supabase/client.ts)
+#### [DELETE] [apps/web/lib/supabase/server.ts](file:///d:/repos/AIVA/apps/web/lib/supabase/server.ts)
+#### [DELETE] [apps/web/lib/supabase/middleware.ts](file:///d:/repos/AIVA/apps/web/lib/supabase/middleware.ts)
+- Delete unused legacy SDK wrappers.
 
-Run per-scene TTS and asset synthesis concurrently, generate real `.srt` subtitles, and apply FFmpeg audio ducking.
-
-#### [MODIFY] [apps/workers/app/agents/voiceover_agent.py](file:///d:/repos/AIVA/apps/workers/app/agents/voiceover_agent.py)
-- Use `asyncio.gather` to synthesize scene voiceovers concurrently.
-- Cleanly return `word_timings` for every scene.
-
-#### [MODIFY] [apps/workers/app/pipelines/stage_handlers.py](file:///d:/repos/AIVA/apps/workers/app/pipelines/stage_handlers.py)
-- Remove duplicate dead line `agent = VoiceoverAgent(tts)`.
-- Pass real `word_timings` through subtitle extraction stage instead of empty arrays.
-
-#### [MODIFY] [apps/web/src/services/pipeline/handlers/SubtitleHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/SubtitleHandler.ts)
-- Harmonize subtitle output keys with `CompositionHandler` (`word_timings` / `wordTimings`).
-
-#### [MODIFY] [apps/workers/app/core/composition/audio_mixer.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/audio_mixer.py)
-- Bundle default royalty-free background music tracks in storage.
-- Connect `sidechaincompress` audio filter in FFmpeg graph builder to automatically duck music under speech.
+#### [MODIFY] [apps/web/package.json](file:///d:/repos/AIVA/apps/web/package.json)
+- Remove `@supabase/supabase-js` and `@supabase/ssr`.
 
 ---
 
-### Milestone 6: Implement True Single-Scene Re-render (Ticket 06)
+### Component 6: Documentation & Architecture Alignment (Rule 12)
 
-Regenerate modified scene assets and re-stitch master MP4 without paying full video re-render costs.
+#### [NEW] [docs/adr/005-local-first-postgresql-migration.md](file:///d:/repos/AIVA/docs/adr/005-local-first-postgresql-migration.md) & [MODIFY] [ADR.md](file:///d:/repos/AIVA/ADR.md)
+- Record architectural decision: deprecating Cloud Supabase in favor of standalone local PostgreSQL (`pg` + `asyncpg`).
 
-#### [MODIFY] [apps/workers/app/pipeline/rerender_scene.py](file:///d:/repos/AIVA/apps/workers/app/pipeline/rerender_scene.py)
-- Read updated `script_segment` / `visual_prompt` from `public.scene_versions`.
-- Re-synthesize only the target scene's voiceover (TTS + word boundaries).
-- Re-render only the target scene's visual overlay (Remotion clip / image asset).
-- Update stage checkpoints (`03_script`, `04_voice`, `06_assets`).
-- Re-execute `CompositionEngine` stitching cached unchanged scene clips with the newly rendered scene clip.
-- Update `public.scenes.render_status = 'completed'`.
+#### [MODIFY] [README.md](file:///d:/repos/AIVA/README.md) & [SETUP.md](file:///d:/repos/AIVA/SETUP.md)
+- Replace Supabase CLI setup steps with `pnpm services:up` and `pnpm db:migrate`.
 
-#### [MODIFY] [apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/[id]/scenes/[scene_id]/rerender/route.ts)
-- Handle re-render dispatch with proper error trapping and status reporting.
+#### [MODIFY] [.env.example](file:///d:/repos/AIVA/.env.example)
+- Remove `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`; document `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aiva`.
 
----
-
-### Milestone 7: Clean-Clone End-to-End Verification (Ticket 07)
-
-Construct an automated end-to-end certification suite validating all 4 steps.
-
-#### [NEW] [scripts/certify_v1_e2e.ts](file:///d:/repos/AIVA/scripts/certify_v1_e2e.ts)
-- Automated verification script:
-  1. Test 1: Submit topic brief, assert pipeline runs, assert `composition.mp4` and `subtitles.srt` generated.
-  2. Test 2: Submit custom script brief, assert research/outline bypassed, assert `composition.mp4` generated.
-  3. Test 3: Trigger single-scene re-render via API, assert targeted re-composition succeeds and updates master video.
+#### [MODIFY] [docs/EDD.md](file:///d:/repos/AIVA/docs/EDD.md)
+- Reconcile §10, §12, §14, §39, §42, §43 to reflect local-first PostgreSQL architecture and local filesystem storage.
 
 ---
 
-## Verification Plan
+## 3. Verification & Acceptance Gates
 
-### Automated Tests
-```powershell
-# 1. Verify shared-types and monorepo build
-pnpm --filter @aiva/shared-types build
-pnpm build
-
-# 2. Run backend Python worker unit & pipeline tests
-cd apps/workers
-pytest tests/ -v
-
-# 3. Run Web API tests
-cd ../..
-pnpm --filter web test
-
-# 4. Run end-to-end V1 certification test
-pnpm exec ts-node scripts/certify_v1_e2e.ts
-```
-
-### Manual Verification
-- Launch local development stack (`docker compose up -d postgres redis` + `pnpm dev`).
-- Open `http://localhost:3000`, submit a topic brief with custom voice selection, and verify MP4 output downloads.
-- Open `http://localhost:3000`, paste a custom script, verify pipeline bypasses research and renders correctly.
-- Open Timeline Studio (`/projects/[id]/timeline`), edit Scene 1 narration, click re-render, and verify only Scene 1 re-renders and the master video updates.
+| Test / Gate | Command | Acceptance Criteria |
+|---|---|---|
+| **Migration Runner** | `pnpm db:migrate` | All 8 migrations apply cleanly from `packages/database/migrations/`. |
+| **Golden Pipeline Certifier** | `pnpm test:pipeline` | 5/5 test suites pass (Topic Brief, TTS, Voice Stitching, FFmpeg Composition, Single-Scene Re-render). |
+| **Worker Pytest Suite** | `cd apps/workers && venv\Scripts\python.exe -m pytest tests/ -v` | 11/11 tests pass with asyncpg communicating with local PostgreSQL. |
+| **Web Build & Typecheck** | `pnpm --filter web exec tsc --noEmit && pnpm --filter web build` | Next.js 16 compiles with 0 errors and zero Supabase imports. |
+| **Zero Runtime Supabase Imports** | `git grep -i "@supabase" apps/` | Exactly 0 matches across `apps/web`, `apps/workers`, and `apps/template-renderer`. |
+| **Frontend Live UI Check** | `pnpm dev` | Dashboard loads projects via `GET /api/v1/projects`, creation runs end-to-end, and status live-updates. |

@@ -76,17 +76,14 @@ jobs:
           node-version: '20'
           cache: 'pnpm'
           
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
         
-      - name: Validate Migrations
-        run: bash packages/database/scripts/validate_migrations.sh
-        
-      - name: Start Infrastructure (Redis)
-        run: docker compose -f infra/docker-compose.yml up -d redis
+      - name: Start Infrastructure (PostgreSQL & Redis)
+        run: docker compose -f infra/docker-compose.yml up -d postgres redis
+
+      - name: Apply Database Migrations
+        run: pnpm db:migrate
         
       - name: Run Golden Suite Certification
         env:

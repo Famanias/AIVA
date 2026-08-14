@@ -4,9 +4,9 @@ This document tracks the major architectural decisions made during Phase 1 of th
 
 ---
 
-## ADR 001: Next.js Orchestrator
-**Context**: We needed a central control plane to handle user authentication, database writes, and job dispatching.
-**Decision**: Use Next.js 16 with Supabase Auth.
+## ADR 001: Next.js Orchestrator & Local Auth Control Plane
+**Context**: We needed a central control plane to handle user authentication, database writes, and job dispatching for local-first execution.
+**Decision**: Use Next.js 16 with local session management (`AIVA_AUTH_MODE`).
 **Consequences**: Clean separation of frontend UI and central API routing. Next.js becomes the state manager, dropping jobs into BullMQ, rather than executing long-running ML tasks itself.
 
 ## ADR 002: Python AI Workers
@@ -19,10 +19,10 @@ This document tracks the major architectural decisions made during Phase 1 of th
 **Decision**: Use BullMQ backed by Redis for job queuing.
 **Consequences**: Reliable exponential backoffs and dead-letter queues. The Next.js dispatcher and Python workers must both integrate with BullMQ.
 
-## ADR 004: Supabase as the Database
-**Context**: We need a relational database with built-in auth, RLS, and realtime capabilities for the dashboard.
-**Decision**: Use Supabase (PostgreSQL).
-**Consequences**: Rapid schema iteration and strong typed generation (`schema.ts`). We heavily leverage RLS to ensure zero-trust between tenants.
+## ADR 004: Standalone PostgreSQL Database (Supabase Deprecated)
+**Context**: We need a local-first, self-hosted relational database with full ACID compliance, native JSONB querying, vector similarity search (`pgvector`), and multi-process concurrency across Next.js, FastAPI, and BullMQ without vendor lock-in.
+**Decision**: Use standalone PostgreSQL 16 with `pgvector` via `infra/docker-compose.yml`.
+**Consequences**: Full offline execution, zero external cloud database dependencies, unified TypeScript migration runner (`packages/database/src/migrate.ts`), and native connection pooling (`pg` + `asyncpg`). See `docs/adr/005-local-first-postgresql-migration.md`.
 
 ## ADR 005: Template Renderer Separation
 **Context**: Rendering dynamic video frames programmatically is CPU intensive and relies on Chromium.

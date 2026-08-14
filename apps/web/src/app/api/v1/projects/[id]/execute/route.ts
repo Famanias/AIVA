@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { query } from '@aiva/database'
 import { QueueService } from '../../../../../../services/queue.service'
+import { getAuthenticatedUser } from '../../../../../../lib/auth/session'
 import fs from 'fs'
 import path from 'path'
 
@@ -30,17 +31,11 @@ export async function POST(
       let project = projRes.rows[0]
 
       if (!project) {
-        const headerUserId = req.headers.get('x-user-id')
-        let userId = headerUserId || null
-
-        if (!userId) {
-          const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NEXT_PUBLIC_SUPABASE_URL
-          if (isLocalDev) {
-            userId = '00000000-0000-0000-0000-000000000000'
-          } else {
-            return NextResponse.json({ error: 'Unauthorized: Missing user authentication session' }, { status: 401 })
-          }
+        const user = getAuthenticatedUser(req)
+        if (!user) {
+          return NextResponse.json({ error: 'Unauthorized: Missing user authentication session' }, { status: 401 })
         }
+        const userId = user.id
 
         const insertProj = await query(
           `INSERT INTO public.projects (

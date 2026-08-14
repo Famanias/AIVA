@@ -1,8 +1,6 @@
 'use client'
 
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
-import { Database } from '@aiva/shared-types'
 import { PipelineTelemetry, JobRow, ProjectRow, JobEventRow, PipelineLogRow, PipelineStage } from '../types/telemetry'
 
 interface DashboardContextType {
@@ -32,69 +30,29 @@ export function DashboardProvider({
   const [logs, setLogs] = useState<PipelineLogRow[]>(initialLogs || [])
   const [project, setProject] = useState<ProjectRow | null>(initialProject)
   
-  const supabase = createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
   useEffect(() => {
     if (!job?.id) return
 
-    // Subscribe to jobs table changes
-    const jobSubscription = supabase
-      .channel(`job-updates-${job.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${job.id}` },
-        (payload) => {
-          setJob(payload.new as JobRow)
+    const fetchTelemetry = async () => {
+      try {
+        const res = await fetch(`/api/v1/jobs/${job.id}/events`)
+        const data = await res.json()
+        if (data.status === 'success' && data.data) {
+          if (data.data.job) setJob(data.data.job)
+          if (data.data.project) setProject(data.data.project)
+          if (Array.isArray(data.data.events)) setEvents(data.data.events)
+          if (Array.isArray(data.data.logs)) setLogs(data.data.logs)
         }
-      )
-      .subscribe()
-
-    // Subscribe to job_events table insertions
-    const eventsSubscription = supabase
-      .channel(`event-updates-${job.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'job_events', filter: `job_id=eq.${job.id}` },
-        (payload) => {
-          setEvents((prev) => [...prev, payload.new as JobEventRow])
-        }
-      )
-      .subscribe()
-
-    // Subscribe to pipeline_logs table insertions
-    const logsSubscription = supabase
-      .channel(`log-updates-${job.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'pipeline_logs', filter: `job_id=eq.${job.id}` },
-        (payload) => {
-          setLogs((prev) => [payload.new as PipelineLogRow, ...prev]) // Prepended to show newest first
-        }
-      )
-      .subscribe()
-
-    // Subscribe to projects table changes
-    const projectSubscription = supabase
-      .channel(`project-updates-${project?.id}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'projects', filter: `id=eq.${project?.id}` },
-        (payload) => {
-          setProject(payload.new as ProjectRow)
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(jobSubscription)
-      supabase.removeChannel(eventsSubscription)
-      supabase.removeChannel(logsSubscription)
-      supabase.removeChannel(projectSubscription)
+      } catch (err) {
+        console.error('[DashboardProvider] Telemetry fetch error:', err)
+      }
     }
-  }, [job?.id, project?.id, supabase])
+
+    fetchTelemetry()
+    const interval = setInterval(fetchTelemetry, 2000)
+
+    return () => clearInterval(interval)
+  }, [job?.id])
 
   // Derive Pipeline Stages from the current job step and history
   const stages = useMemo<PipelineStage[]>(() => {
@@ -140,7 +98,7 @@ export function DashboardProvider({
       stages,
       // Default to checking; this will be hydrated by a real health check hook later
       health: {
-        infrastructure: { redis: 'checking', supabase: 'checking', worker: 'checking' },
+        infrastructure: { redis: 'checking', postgres: 'checking', worker: 'checking' },
         providers: { llm: 'checking', tts: 'checking' }
       },
       artifacts: {

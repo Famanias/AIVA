@@ -11,7 +11,7 @@ export type PipelineLogRow = Database['public']['Tables']['pipeline_logs']['Row'
 export interface SystemHealth {
   infrastructure: {
     redis: 'connected' | 'disconnected' | 'checking'
-    supabase: 'connected' | 'disconnected' | 'checking'
+    postgres: 'connected' | 'disconnected' | 'checking'
     worker: 'online' | 'offline' | 'checking'
   }
   providers: {

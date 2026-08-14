@@ -1,45 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { QueueControlService } from '../../../../../services/queue.control.service'
+import { getAuthenticatedUser } from '../../../../../lib/auth/session'
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            try {
-              cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-            } catch {
-              // Ignore inside route handlers
-            }
-          },
-        },
-      }
-    )
-
-    // Authenticate user with local fallback
-    let userId = '00000000-0000-0000-0000-000000000000'
-    const isDev = process.env.NODE_ENV === 'development' || !process.env.NEXT_PUBLIC_SUPABASE_URL
-    try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      if (user) {
-        userId = user.id
-      } else if (!isDev) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
-    } catch {
-      if (!isDev) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      }
+    const user = getAuthenticatedUser(req)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+    const userId = user.id
 
     const body = await req.json()
     const { action, jobId, projectId, jobIds, filter } = body
