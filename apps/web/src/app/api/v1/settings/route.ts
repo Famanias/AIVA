@@ -54,6 +54,10 @@ export async function GET() {
       }
     }
 
+    if (settings.llm_provider && settings.llm_provider !== "ollama") {
+      settings.llm_provider = "openai_compatible";
+    }
+
     return NextResponse.json({ status: "success", data: settings });
   } catch (error) {
     return NextResponse.json(

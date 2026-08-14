@@ -51,7 +51,11 @@ export default function SettingsPage() {
       const res = await fetch("/api/v1/settings");
       const data = await res.json();
       if (data.status === "success" && data.data) {
-        setForm((prev) => ({ ...prev, ...data.data }));
+        const fetched = { ...data.data };
+        if (fetched.llm_provider && fetched.llm_provider !== "ollama") {
+          fetched.llm_provider = "openai_compatible";
+        }
+        setForm((prev) => ({ ...prev, ...fetched }));
       }
     } catch (err) {
       console.error("Failed to load settings:", err);
@@ -254,7 +258,7 @@ export default function SettingsPage() {
         </section>
 
         {/* Unified LLM Configuration */}
-        {form.llm_provider === "openai_compatible" && (
+        {form.llm_provider !== "ollama" && (
           <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
             <h2 className="text-xl font-semibold text-white flex items-center gap-2 border-b border-gray-800 pb-3">
               <Server className="w-5 h-5 text-indigo-400" /> OpenAI-Compatible LLM Configuration
