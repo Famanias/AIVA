@@ -1,13 +1,70 @@
 @import "tailwindcss";
+@import "./tokens.css";
 
 @layer base {
   :root {
-    --background: #09090b;
-    --foreground: #fafafa;
+    color-scheme: dark;
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
   }
   body {
-    background-color: var(--background);
-    color: var(--foreground);
-    font-feature-settings: "rlig" 1, "calt" 1;
+    background-color: var(--color-bg-page);
+    color: var(--color-text-primary);
+    font-size: var(--text-body);
+  }
+  /* Skip link */
+  .skip-link {
+    position: absolute;
+    top: -100%;
+    left: var(--space-md);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--color-primary);
+    color: var(--color-text-inverse);
+    border-radius: var(--radius-md);
+    z-index: 9999;
+    font-weight: 600;
+    transition: top var(--duration-fast) var(--ease-out);
+  }
+  .skip-link:focus {
+    top: var(--space-md);
+  }
+  /* Focus visible default */
+  *:focus-visible {
+    outline: none;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px var(--color-bg-page), 0 0 0 4px var(--color-primary-ring);
+  }
+  /* Selection */
+  ::selection {
+    background: var(--color-primary);
+    color: var(--color-text-inverse);
+  }
+  /* Scrollbar */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border-radius: var(--radius-full);
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted);
   }
 }

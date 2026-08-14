@@ -1,96 +1,181 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+} from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Toast } from '@/components/ui/toast';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Key,
   Cpu,
+  Server,
+  Layers,
   Save,
   CheckCircle,
   AlertCircle,
   RefreshCw,
-  Server,
-  Layers,
-} from "lucide-react";
+} from 'lucide-react';
+
+interface SettingsFormState {
+  llm_provider: string;
+  llm_base_url: string;
+  llm_api_key: string;
+  llm_model: string;
+  tts_provider: string;
+  image_provider: string;
+  broll_provider: string;
+  elevenlabs_api_key: string;
+  pexels_api_key: string;
+  cloudflare_api_key: string;
+  ollama_base_url: string;
+  ollama_model: string;
+}
+
+interface OllamaStatus {
+  connected: boolean;
+  models: string[];
+  message: string;
+}
+
+interface FetchStatus {
+  connected: boolean;
+  message: string;
+}
+
+interface ToastState {
+  type: 'success' | 'error';
+  message: string;
+}
+
+const SETTINGS_TABS = [
+  { id: 'providers', label: 'Providers', icon: Layers },
+  { id: 'llm', label: 'LLM Config', icon: Server },
+  { id: 'ollama', label: 'Ollama', icon: Cpu },
+  { id: 'api-keys', label: 'API Keys', icon: Key },
+] as const;
+
+const PRESET_URLS = [
+  { label: 'Cloud / Direct (OpenRouter)', url: 'https://openrouter.ai/api/v1' },
+  { label: 'Local Gateway (OmniRoute)', url: 'http://localhost:20128/v1' },
+  { label: 'Local Hardware (Ollama /v1)', url: 'http://localhost:11434/v1' },
+];
+
+const defaultForm: SettingsFormState = {
+  llm_provider: 'openai_compatible',
+  llm_base_url: '',
+  llm_api_key: '',
+  llm_model: '',
+  tts_provider: 'edge_tts',
+  image_provider: 'sdxl',
+  broll_provider: 'pexels',
+  elevenlabs_api_key: '',
+  pexels_api_key: '',
+  cloudflare_api_key: '',
+  ollama_base_url: 'http://localhost:11434',
+  ollama_model: 'llama3.2',
+};
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState('providers');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<SettingsFormState>(defaultForm);
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{
-    type: "success" | "error";
-    text: string;
-  } | null>(null);
-
-  const [ollamaStatus, setOllamaStatus] = useState<{
-    connected: boolean;
-    models: string[];
-    message: string;
-  } | null>(null);
-
-  const [form, setForm] = useState({
-    llm_provider: "openai_compatible",
-    llm_base_url: "",
-    llm_api_key: "",
-    llm_model: "",
-    tts_provider: "edge_tts",
-    image_provider: "sdxl",
-    broll_provider: "pexels",
-    elevenlabs_api_key: "",
-    pexels_api_key: "",
-    cloudflare_api_key: "",
-    ollama_base_url: "http://localhost:11434",
-    ollama_model: "llama3.2",
-  });
-
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
-  const [fetchModelsStatus, setFetchModelsStatus] = useState<{
-    connected: boolean;
-    message: string;
-  } | null>(null);
+  const [fetchModelsStatus, setFetchModelsStatus] = useState<FetchStatus | null>(null);
   const [customModelMode, setCustomModelMode] = useState(false);
   const [customOllamaModelMode, setCustomOllamaModelMode] = useState(false);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   const fetchSettings = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/v1/settings");
+      const res = await fetch('/api/v1/settings');
       const data = await res.json();
-      if (data.status === "success" && data.data) {
+      if (data.status === 'success' && data.data) {
         const fetched = { ...data.data };
-        if (fetched.llm_provider && fetched.llm_provider !== "ollama") {
-          fetched.llm_provider = "openai_compatible";
+        if (fetched.llm_provider && fetched.llm_provider !== 'ollama') {
+          fetched.llm_provider = 'openai_compatible';
         }
         setForm((prev) => ({ ...prev, ...fetched }));
-        // Auto-detect local Ollama models on load
-        handleTestOllama(fetched.ollama_base_url || "http://localhost:11434");
+        handleTestOllama(fetched.ollama_base_url || 'http://localhost:11434');
       }
     } catch (err) {
-      console.error("Failed to load settings:", err);
+      console.error('Failed to load settings:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSettings();
   }, []);
+
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setSaving(true);
+    setToast(null);
+
+    try {
+      const res = await fetch('/api/v1/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        setToast({
+          type: 'success',
+          message: 'Settings saved and encrypted in database!',
+        });
+      } else {
+        setToast({
+          type: 'error',
+          message: data.message || 'Failed to save settings.',
+        });
+      }
+    } catch (err: any) {
+      setToast({
+        type: 'error',
+        message: err.message || 'An error occurred while saving.',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleFetchModels = async () => {
     setFetchingModels(true);
     setFetchModelsStatus(null);
     try {
-      const res = await fetch("/api/v1/settings/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/v1/settings/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           llm_base_url: form.llm_base_url,
           llm_api_key: form.llm_api_key,
         }),
       });
       const data = await res.json();
-      if (data.status === "success" && Array.isArray(data.models) && data.models.length > 0) {
+      if (data.status === 'success' && Array.isArray(data.models) && data.models.length > 0) {
         setAvailableModels(data.models);
         setFetchModelsStatus({
           connected: true,
@@ -103,55 +188,16 @@ export default function SettingsPage() {
       } else {
         setFetchModelsStatus({
           connected: false,
-          message: data.message || "No models returned from endpoint.",
+          message: data.message || 'No models returned from endpoint.',
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       setFetchModelsStatus({
         connected: false,
-        message: (err as Error).message || "Failed to fetch models.",
+        message: err.message || 'Failed to fetch models.',
       });
     } finally {
       setFetchingModels(false);
-    }
-  };
-
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
-  ) => {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setStatusMessage(null);
-
-    try {
-      const res = await fetch("/api/v1/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (data.status === "success") {
-        setStatusMessage({
-          type: "success",
-          text: "Settings saved and encrypted in database!",
-        });
-      } else {
-        setStatusMessage({
-          type: "error",
-          text: data.message || "Failed to save settings.",
-        });
-      }
-    } catch (err) {
-      setStatusMessage({
-        type: "error",
-        text: (err as Error).message || "An error occurred while saving.",
-      });
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -159,12 +205,12 @@ export default function SettingsPage() {
     setTestingOllama(true);
     setOllamaStatus(null);
 
-    const baseUrl = targetBaseUrl || form.ollama_base_url || "http://localhost:11434";
+    const baseUrl = targetBaseUrl || form.ollama_base_url || 'http://localhost:11434';
 
     try {
-      const res = await fetch("/api/v1/settings/test-ollama", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/v1/settings/test-ollama', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ollama_base_url: baseUrl }),
       });
       const data = await res.json();
@@ -182,425 +228,458 @@ export default function SettingsPage() {
           return prev;
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       setOllamaStatus({
         connected: false,
         models: [],
-        message: (err as Error).message,
+        message: err.message,
       });
     } finally {
       setTestingOllama(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="p-8 text-center text-gray-400">
-        <RefreshCw className="animate-spin w-8 h-8 mx-auto mb-2" />
-        Loading settings...
-      </div>
-    );
-  }
+  if (loading) return <SettingsSkeleton />;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-8 text-gray-100">
-      <div>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Server className="w-8 h-8 text-indigo-400" /> System & Provider Settings
-        </h1>
-        <p className="text-gray-400 mt-1">
-          Configure active AI models, credentials (encrypted with AES-256), and local offline inference endpoints.
-        </p>
+    <div className="space-y-6">
+      {/* Page Header */}
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display font-bold text-display-md text-text-primary flex items-center gap-3">
+            <Server className="w-8 h-8 text-primary" /> Settings
+          </h1>
+          <p className="text-body text-text-secondary mt-1">
+            Configure AI models, credentials, and local inference endpoints.
+          </p>
+        </div>
+        <Button onClick={() => handleSave()} disabled={saving} size="lg" variant="primary">
+          {saving ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+              Saving…
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4 mr-2" />
+              Save Settings
+            </>
+          )}
+        </Button>
       </div>
 
-      {statusMessage && (
-        <div
-          className={`p-4 rounded-lg flex items-center gap-3 border ${
-            statusMessage.type === "success"
-              ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
-              : "bg-rose-950/40 border-rose-500/40 text-rose-300"
-          }`}
-        >
-          {statusMessage.type === "success" ? (
-            <CheckCircle className="w-5 h-5 shrink-0 text-emerald-400" />
-          ) : (
-            <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
-          )}
-          <span>{statusMessage.text}</span>
-        </div>
+      {/* Toast Feedback */}
+      {toast && (
+        <Toast
+          type={toast.type}
+          title={toast.type === 'success' ? 'Saved' : 'Error'}
+          message={toast.message}
+          onClose={() => setToast(null)}
+        />
       )}
 
-      <form onSubmit={handleSave} className="space-y-8">
-        {/* Active Providers Selection */}
-        <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2 border-b border-gray-800 pb-3">
-            <Layers className="w-5 h-5 text-indigo-400" /> Active Stage Providers
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                LLM Provider (Scripting & Outline)
-              </label>
-              <select
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto p-1.5 gap-1">
+          {SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
+            <TabsTrigger
+              key={id}
+              value={id}
+              className="flex items-center justify-center gap-2 py-2.5 text-body-sm font-medium"
+            >
+              <Icon className="w-4 h-4" aria-hidden="true" />
+              <span>{label}</span>
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {/* Providers Tab */}
+        <TabsContent value="providers" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Layers className="w-5 h-5 text-primary" /> Active Stage Providers
+              </CardTitle>
+              <CardDescription>
+                Select the active provider engine for each pipeline stage.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <ProviderSelect
+                label="LLM Provider (Scripting & Outline)"
                 name="llm_provider"
                 value={form.llm_provider}
                 onChange={handleChange}
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="openai_compatible">OpenAI-Compatible Endpoint</option>
-                <option value="ollama">Ollama (100% Offline Local Model)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                TTS Provider (Voiceover)
-              </label>
-              <select
+                options={[
+                  { value: 'openai_compatible', label: 'OpenAI-Compatible Endpoint' },
+                  { value: 'ollama', label: 'Ollama (100% Offline Local Model)' },
+                ]}
+              />
+              <ProviderSelect
+                label="TTS Provider (Voiceover)"
                 name="tts_provider"
                 value={form.tts_provider}
                 onChange={handleChange}
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="edge_tts">EdgeTTS (Free Cloud Neural Voices)</option>
-                <option value="kokoro">Kokoro-82M (Self-Hosted Local TTS)</option>
-                <option value="elevenlabs">ElevenLabs (High-Quality API)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Image Generator
-              </label>
-              <select
+                options={[
+                  { value: 'edge_tts', label: 'EdgeTTS (Free Cloud Neural Voices)' },
+                  { value: 'kokoro', label: 'Kokoro-82M (Self-Hosted Local TTS)' },
+                  { value: 'elevenlabs', label: 'ElevenLabs (High-Quality API)' },
+                ]}
+              />
+              <ProviderSelect
+                label="Image Generator"
                 name="image_provider"
                 value={form.image_provider}
                 onChange={handleChange}
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="sdxl">Cloudflare Workers AI (SDXL)</option>
-                <option value="pexels">Pexels Stock Photos</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                B-Roll Video Provider
-              </label>
-              <select
+                options={[
+                  { value: 'sdxl', label: 'Cloudflare Workers AI (SDXL)' },
+                  { value: 'pexels', label: 'Pexels Stock Photos' },
+                ]}
+              />
+              <ProviderSelect
+                label="B-Roll Video Provider"
                 name="broll_provider"
                 value={form.broll_provider}
                 onChange={handleChange}
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              >
-                <option value="pexels">Pexels Video API</option>
-                <option value="pixabay">Pixabay Video API</option>
-              </select>
-            </div>
-          </div>
-        </section>
+                options={[
+                  { value: 'pexels', label: 'Pexels Video API' },
+                  { value: 'pixabay', label: 'Pixabay Video API' },
+                ]}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {/* Unified LLM Configuration */}
-        {form.llm_provider !== "ollama" && (
-          <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-              <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-                <Server className="w-5 h-5 text-indigo-400" /> OpenAI-Compatible LLM Configuration
-              </h2>
-              <button
-                type="button"
-                onClick={handleFetchModels}
-                disabled={fetchingModels || !form.llm_base_url}
-                className="px-3.5 py-1.5 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
-              >
-                {fetchingModels ? <RefreshCw className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
-                Fetch Models
-              </button>
-            </div>
-
-            {fetchModelsStatus && (
-              <div
-                className={`p-3.5 rounded-lg text-sm flex items-center gap-3 border ${
-                  fetchModelsStatus.connected
-                    ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
-                    : "bg-amber-950/40 border-amber-500/40 text-amber-300"
-                }`}
-              >
-                {fetchModelsStatus.connected ? (
-                  <CheckCircle className="w-5 h-5 shrink-0 text-emerald-400" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 shrink-0 text-amber-400" />
-                )}
+        {/* LLM Config Tab */}
+        <TabsContent value="llm" className="space-y-6 mt-6">
+          {form.llm_provider !== 'ollama' ? (
+            <Card>
+              <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <p className="font-medium">{fetchModelsStatus.message}</p>
+                  <CardTitle className="flex items-center gap-2">
+                    <Server className="w-5 h-5 text-primary" /> OpenAI-Compatible LLM Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Configure your OpenAI-compatible endpoint and discover available models.
+                  </CardDescription>
                 </div>
-              </div>
-            )}
-            
-            <div className="flex flex-wrap gap-2 mb-2 items-center">
-              <span className="text-sm text-gray-400">Presets:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setForm(prev => ({ ...prev, llm_base_url: "https://openrouter.ai/api/v1" }));
-                  setFetchModelsStatus(null);
-                }}
-                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
-              >
-                Cloud / Direct (OpenRouter)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setForm(prev => ({ ...prev, llm_base_url: "http://localhost:20128/v1" }));
-                  setFetchModelsStatus(null);
-                }}
-                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
-              >
-                Local Gateway (OmniRoute)
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setForm(prev => ({ ...prev, llm_base_url: "http://localhost:11434/v1" }));
-                  setFetchModelsStatus(null);
-                }}
-                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
-              >
-                Local Hardware (Ollama /v1)
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Base URL
-                </label>
-                <input
-                  type="text"
-                  name="llm_base_url"
-                  value={form.llm_base_url}
-                  onChange={handleChange}
-                  placeholder="https://openrouter.ai/api/v1"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  API Key
-                </label>
-                <input
-                  type="password"
-                  name="llm_api_key"
-                  value={form.llm_api_key}
-                  onChange={handleChange}
-                  placeholder="sk-..."
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-sm font-medium text-gray-300">
-                    Model ID
-                  </label>
-                  {availableModels.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setCustomModelMode(!customModelMode)}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 transition"
-                    >
-                      {customModelMode ? "Select from list" : "Enter custom model ID"}
-                    </button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleFetchModels}
+                  disabled={fetchingModels || !form.llm_base_url}
+                >
+                  {fetchingModels ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Fetching…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2" /> Fetch Models
+                    </>
                   )}
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {fetchModelsStatus && (
+                  <Alert variant={fetchModelsStatus.connected ? 'success' : 'destructive'}>
+                    <AlertDescription className="flex items-center gap-2">
+                      {fetchModelsStatus.connected ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      ) : (
+                        <AlertCircle className="w-4 h-4 text-red-400" />
+                      )}
+                      <span>{fetchModelsStatus.message}</span>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Preset URLs */}
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-body-sm text-text-muted mr-1">Presets:</span>
+                  {PRESET_URLS.map(({ label, url }) => (
+                    <Button
+                      key={url}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setForm((p) => ({ ...p, llm_base_url: url }));
+                        setFetchModelsStatus(null);
+                      }}
+                      className="text-caption h-7 px-2.5"
+                    >
+                      {label}
+                    </Button>
+                  ))}
                 </div>
-                <div className="flex gap-3">
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Input
+                    label="Base URL"
+                    name="llm_base_url"
+                    type="url"
+                    placeholder="https://openrouter.ai/api/v1"
+                    value={form.llm_base_url}
+                    onChange={handleChange}
+                    autoComplete="off"
+                  />
+                  <Input
+                    label="API Key"
+                    name="llm_api_key"
+                    type="password"
+                    placeholder="sk-…"
+                    value={form.llm_api_key}
+                    onChange={handleChange}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label htmlFor="llm-model-input">Model ID</Label>
+                    {availableModels.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCustomModelMode(!customModelMode)}
+                        className="h-7 text-caption text-primary hover:text-red-300 p-0"
+                      >
+                        {customModelMode ? 'Select from list' : 'Enter custom model ID'}
+                      </Button>
+                    )}
+                  </div>
                   {availableModels.length > 0 && !customModelMode ? (
                     <select
+                      id="llm-model-input"
                       name="llm_model"
                       value={form.llm_model}
                       onChange={handleChange}
-                      className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full h-10 px-3 rounded-lg bg-bg-input border border-border text-text-primary text-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     >
-                      {availableModels.map(m => (
-                        <option key={m} value={m}>{m}</option>
+                      {availableModels.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
                       ))}
                     </select>
                   ) : (
-                    <input
-                      type="text"
+                    <Input
+                      id="llm-model-input"
                       name="llm_model"
+                      type="text"
+                      placeholder="google/gemini-flash-1.5"
                       value={form.llm_model}
                       onChange={handleChange}
-                      placeholder="google/gemini-flash-1.5"
-                      className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="py-8 text-center text-text-muted">
+                Ollama is currently selected as active LLM provider. See the Ollama tab.
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Ollama Tab */}
+        <TabsContent value="ollama" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Cpu className="w-5 h-5 text-primary" /> Local Offline AI Models (Ollama)
+                </CardTitle>
+                <CardDescription>
+                  Connect to a local Ollama instance for fully offline script and outline generation.
+                </CardDescription>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => handleTestOllama()}
+                disabled={testingOllama}
+              >
+                {testingOllama ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Testing…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2" /> Test Connection
+                  </>
+                )}
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {ollamaStatus && (
+                <Alert variant={ollamaStatus.connected ? 'success' : 'destructive'}>
+                  <AlertDescription className="flex items-center gap-2">
+                    {ollamaStatus.connected ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-400" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-400" />
+                    )}
+                    <span>{ollamaStatus.message}</span>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <Input
+                  label="Ollama Host URL"
+                  name="ollama_base_url"
+                  type="url"
+                  placeholder="http://localhost:11434"
+                  value={form.ollama_base_url}
+                  onChange={handleChange}
+                />
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label htmlFor="ollama-model-input">Detected Models</Label>
+                    {ollamaStatus?.models && ollamaStatus.models.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCustomOllamaModelMode(!customOllamaModelMode)}
+                        className="h-7 text-caption text-primary hover:text-red-300 p-0"
+                      >
+                        {customOllamaModelMode
+                          ? 'Select from detected list'
+                          : 'Enter custom model name'}
+                      </Button>
+                    )}
+                  </div>
+                  {ollamaStatus?.models &&
+                  ollamaStatus.models.length > 0 &&
+                  !customOllamaModelMode ? (
+                    <select
+                      id="ollama-model-input"
+                      name="ollama_model"
+                      value={form.ollama_model}
+                      onChange={handleChange}
+                      className="w-full h-10 px-3 rounded-lg bg-bg-input border border-border text-text-primary text-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    >
+                      {ollamaStatus.models.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Input
+                      id="ollama-model-input"
+                      name="ollama_model"
+                      type="text"
+                      placeholder="llama3.2 or deepseek-r1"
+                      value={form.ollama_model}
+                      onChange={handleChange}
                     />
                   )}
                 </div>
               </div>
-            </div>
-          </section>
-        )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {/* Local AI Models (Ollama) */}
-        <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
-          <div className="flex items-center justify-between border-b border-gray-800 pb-3">
-            <h2 className="text-xl font-semibold text-white flex items-center gap-2">
-              <Cpu className="w-5 h-5 text-indigo-400" /> Local Offline AI Models (Ollama)
-            </h2>
-            <button
-              type="button"
-              onClick={() => handleTestOllama()}
-              disabled={testingOllama}
-              className="px-3.5 py-1.5 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
-            >
-              {testingOllama && <RefreshCw className="animate-spin w-4 h-4" />}
-              Test Connection
-            </button>
-          </div>
-
-          {ollamaStatus && (
-            <div
-              className={`p-3.5 rounded-lg text-sm flex items-center gap-3 border ${
-                ollamaStatus.connected
-                  ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
-                  : "bg-amber-950/40 border-amber-500/40 text-amber-300"
-              }`}
-            >
-              {ollamaStatus.connected ? (
-                <CheckCircle className="w-5 h-5 shrink-0 text-emerald-400" />
-              ) : (
-                <AlertCircle className="w-5 h-5 shrink-0 text-amber-400" />
-              )}
-              <div>
-                <p className="font-medium">{ollamaStatus.message}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Ollama Host URL
-              </label>
-              <input
-                type="text"
-                name="ollama_base_url"
-                value={form.ollama_base_url}
-                onChange={handleChange}
-                placeholder="http://localhost:11434"
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-300">
-                  Detected Models
-                </label>
-                {ollamaStatus?.models && ollamaStatus.models.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setCustomOllamaModelMode(!customOllamaModelMode)}
-                    className="text-xs text-indigo-400 hover:text-indigo-300 transition"
-                  >
-                    {customOllamaModelMode ? "Select from detected list" : "Enter custom model name"}
-                  </button>
-                )}
-              </div>
-              {ollamaStatus?.models && ollamaStatus.models.length > 0 && !customOllamaModelMode ? (
-                <select
-                  name="ollama_model"
-                  value={form.ollama_model}
-                  onChange={handleChange}
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                >
-                  {ollamaStatus.models.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  name="ollama_model"
-                  value={form.ollama_model}
-                  onChange={handleChange}
-                  placeholder="llama3.2 or deepseek-r1"
-                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                />
-              )}
-            </div>
-          </div>
-        </section>
-
-        {/* Cloud API Keys (AES-256 Encrypted) */}
-        <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
-          <h2 className="text-xl font-semibold text-white flex items-center gap-2 border-b border-gray-800 pb-3">
-            <Key className="w-5 h-5 text-indigo-400" /> Cloud API Keys (AES-256 Encrypted)
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                ElevenLabs API Key
-              </label>
-              <input
-                type="password"
+        {/* API Keys Tab */}
+        <TabsContent value="api-keys" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="w-5 h-5 text-primary" /> Cloud API Keys (AES-256 Encrypted)
+              </CardTitle>
+              <CardDescription>
+                Credentials are encrypted at rest with AES-256 and never exposed in plaintext.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6 md:grid-cols-2">
+              <Input
+                label="ElevenLabs API Key"
                 name="elevenlabs_api_key"
+                type="password"
+                placeholder="eleven_…"
                 value={form.elevenlabs_api_key}
                 onChange={handleChange}
-                placeholder="eleven_..."
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
+                autoComplete="off"
+                spellCheck={false}
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Pexels API Key
-              </label>
-              <input
-                type="password"
+              <Input
+                label="Pexels API Key"
                 name="pexels_api_key"
+                type="password"
+                placeholder="Pexels API Key"
                 value={form.pexels_api_key}
                 onChange={handleChange}
-                placeholder="Pexels API Key"
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
+                autoComplete="off"
+                spellCheck={false}
               />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Cloudflare Workers AI Account / Key
-              </label>
-              <input
-                type="password"
+              <Input
+                label="Cloudflare Workers AI Token"
                 name="cloudflare_api_key"
+                type="password"
+                placeholder="Cloudflare Token"
                 value={form.cloudflare_api_key}
                 onChange={handleChange}
-                placeholder="Cloudflare Token"
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
+                autoComplete="off"
+                spellCheck={false}
               />
-            </div>
-          </div>
-        </section>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
 
-        <div className="flex justify-end pt-4">
-          <button
-            type="submit"
-            disabled={saving}
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition disabled:opacity-50"
-          >
-            {saving ? (
-              <RefreshCw className="animate-spin w-5 h-5" />
-            ) : (
-              <Save className="w-5 h-5" />
-            )}
-            {saving ? "Saving..." : "Save Settings"}
-          </button>
-        </div>
-      </form>
+function ProviderSelect({
+  label,
+  name,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <Label htmlFor={name} className="mb-1.5 block">{label}</Label>
+      <select
+        id={name}
+        name={name}
+        value={value}
+        onChange={onChange}
+        className="w-full h-10 px-3 rounded-lg bg-bg-input border border-border text-text-primary text-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function SettingsSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex items-end justify-between">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-10 w-32" />
+      </div>
+      <Skeleton className="h-12 w-full" />
+      <Skeleton className="h-80 w-full" />
     </div>
   );
 }

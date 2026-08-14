@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import {
   Download,
   Film,
@@ -14,7 +14,14 @@ import {
   AlertTriangle,
   Clock,
   ExternalLink,
-} from "lucide-react";
+  RefreshCw,
+  Layers,
+} from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 interface ProjectDetails {
   id: string;
@@ -35,6 +42,21 @@ export default function ProjectOverviewPage() {
   const [project, setProject] = useState<ProjectDetails | null>(null);
   const [resuming, setResuming] = useState(false);
 
+  const fetchProject = useCallback(async (isInitial = false) => {
+    try {
+      if (isInitial) setLoading(true);
+      const res = await fetch(`/api/v1/projects/${projectId}`);
+      const data = await res.json();
+      if (data.status === 'success' && data.data) {
+        setProject(data.data);
+      }
+    } catch (err) {
+      console.error('Failed to load project details:', err);
+    } finally {
+      if (isInitial) setLoading(false);
+    }
+  }, [projectId]);
+
   useEffect(() => {
     fetchProject(true);
 
@@ -42,95 +64,82 @@ export default function ProjectOverviewPage() {
       try {
         const res = await fetch(`/api/v1/projects/${projectId}`);
         const data = await res.json();
-        if (data.status === "success" && data.data) {
+        if (data.status === 'success' && data.data) {
           setProject(data.data);
-          if (data.data.status === "completed" || data.data.status === "failed") {
+          if (data.data.status === 'completed' || data.data.status === 'failed') {
             clearInterval(interval);
           }
         }
       } catch (err) {
-        console.error("Polling error:", err);
+        console.error('Polling error:', err);
       }
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [projectId]);
-
-  const fetchProject = async (isInitial = false) => {
-    try {
-      if (isInitial) setLoading(true);
-      const res = await fetch(`/api/v1/projects/${projectId}`);
-      const data = await res.json();
-      if (data.status === "success" && data.data) {
-        setProject(data.data);
-      }
-    } catch (err) {
-      console.error("Failed to load project details:", err);
-    } finally {
-      if (isInitial) setLoading(false);
-    }
-  };
+  }, [projectId, fetchProject]);
 
   const handleResumePipeline = async () => {
     try {
       setResuming(true);
       const res = await fetch(`/api/v1/projects/${projectId}/execute`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resume: true }),
       });
       const data = await res.json();
-      if (data.status === "success") {
-        setProject((prev) => (prev ? { ...prev, status: "queued" } : prev));
+      if (data.status === 'success') {
+        setProject((prev) => (prev ? { ...prev, status: 'queued' } : prev));
       }
     } catch (err) {
-      console.error("Pipeline resume failed:", err);
+      console.error('Pipeline resume failed:', err);
     } finally {
       setResuming(false);
     }
   };
 
   if (loading) {
-    return (
-      <div className="p-8 text-center text-gray-400">
-        Loading Project Details...
-      </div>
-    );
+    return <ProjectOverviewSkeleton />;
   }
 
   if (!project) {
     return (
-      <div className="p-8 text-center text-red-400">
-        Project not found or failed to load.
+      <div className="p-12 text-center">
+        <Alert variant="destructive" className="max-w-md mx-auto">
+          <AlertTitle>Not Found</AlertTitle>
+          <AlertDescription>Project not found or failed to load.</AlertDescription>
+        </Alert>
       </div>
     );
   }
 
-  const isCompleted = project.status === "completed";
-  const isFailed = project.status === "failed";
-  const isGenerating = project.status === "generating" || project.status === "queued";
+  const isCompleted = project.status === 'completed';
+  const isFailed = project.status === 'failed';
+  const isGenerating = project.status === 'generating' || project.status === 'queued';
 
   const videoDownloadUrl = `/api/v1/storage/projects/${project.id}/composition.mp4?download=true`;
   const subtitlesDownloadUrl = `/api/v1/storage/projects/${project.id}/subtitles.srt?download=true`;
   const checkpointDownloadUrl = `/api/v1/storage/projects/${project.id}/revisions/v1/checkpoint_03_script.json?download=true`;
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6 text-gray-100">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-gray-800 pb-4 gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-5">
         <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-              <Film className="w-7 h-7 text-indigo-400" /> {project.title}
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-display-sm font-display font-bold text-text-primary flex items-center gap-2.5">
+              <Film className="w-7 h-7 text-primary" /> {project.title || project.topic || 'Untitled'}
             </h1>
-            <span
-              className={`px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider flex items-center gap-1 border ${
+            <Badge
+              variant={
                 isCompleted
-                  ? "bg-emerald-950/70 text-emerald-300 border-emerald-800"
+                  ? 'success'
                   : isFailed
-                  ? "bg-red-950/70 text-red-300 border-red-800"
-                  : "bg-indigo-950/70 text-indigo-300 border-indigo-800 animate-pulse"
-              }`}
+                  ? 'destructive'
+                  : isGenerating
+                  ? 'default'
+                  : 'secondary'
+              }
+              className="gap-1.5 uppercase tracking-wider"
             >
               {isCompleted ? (
                 <CheckCircle2 className="w-3.5 h-3.5" />
@@ -140,116 +149,146 @@ export default function ProjectOverviewPage() {
                 <Clock className="w-3.5 h-3.5" />
               )}
               {project.status}
-            </span>
+            </Badge>
           </div>
-          <p className="text-gray-400 text-sm mt-1">Topic: "{project.topic}"</p>
+          <p className="text-body-sm text-text-secondary mt-1 max-w-2xl">
+            Topic: &ldquo;{project.topic}&rdquo;
+          </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href={`/projects/${project.id}/timeline`}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-sm font-medium rounded-lg flex items-center gap-2 transition text-white"
-          >
-            <Sparkles className="w-4 h-4" /> Timeline Studio
+        <div className="flex items-center gap-3">
+          <Link href={`/projects/${project.id}/timeline`}>
+            <Button variant="primary">
+              <Sparkles className="w-4 h-4 mr-2" /> Timeline Studio
+            </Button>
           </Link>
-          <button
-            onClick={() => fetchProject()}
-            className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-sm font-medium rounded-lg flex items-center gap-2 transition"
-          >
-            Refresh
-          </button>
+          <Button variant="secondary" onClick={() => fetchProject()}>
+            <RefreshCw className="w-4 h-4 mr-2" /> Refresh
+          </Button>
         </div>
       </div>
 
       {/* Failure Diagnostic Alert & Resume Button */}
       {isFailed && (
-        <div className="bg-red-950/40 border border-red-800/60 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <Alert variant="destructive" className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <h3 className="text-red-300 font-semibold text-sm flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400" /> Execution Interrupted
-            </h3>
-            <p className="text-xs text-red-200/80">
-              Pipeline encountered an error during generation. Disk stage checkpoints are saved.
-            </p>
+            <AlertTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" /> Generation Interrupted
+            </AlertTitle>
+            <AlertDescription>
+              Pipeline encountered an error during generation. Checkpoints are preserved on disk.
+            </AlertDescription>
           </div>
-          <button
+          <Button
             onClick={handleResumePipeline}
             disabled={resuming}
-            className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white text-xs font-semibold rounded-lg flex items-center gap-2 transition disabled:opacity-50 shrink-0"
+            variant="destructive"
+            size="sm"
+            className="shrink-0"
           >
-            <RotateCcw className="w-4 h-4" /> Resume Pipeline ($0.00 Cached Cost)
-          </button>
-        </div>
+            {resuming ? (
+              <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+            ) : (
+              <RotateCcw className="w-4 h-4 mr-2" />
+            )}
+            Resume Pipeline ($0.00 Cached)
+          </Button>
+        </Alert>
       )}
 
-      {/* Main Preview Player & Details grid */}
+      {/* Main Grid: Player & Assets */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Video Player */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="bg-gray-950 border border-gray-800 rounded-xl overflow-hidden aspect-video flex items-center justify-center relative shadow-2xl">
-            {isCompleted ? (
-              <video
-                src={`/api/v1/storage/projects/${project.id}/composition.mp4`}
-                controls
-                className="w-full h-full object-contain"
-              />
-            ) : (
-              <div className="text-center space-y-3 p-6">
-                <div className="w-16 h-16 bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 rounded-full flex items-center justify-center mx-auto">
-                  <Play className="w-8 h-8 ml-1" />
+          <Card className="overflow-hidden bg-black/60 border-border">
+            <div className="aspect-video w-full flex items-center justify-center relative bg-bg-input">
+              {isCompleted ? (
+                <video
+                  src={`/api/v1/storage/projects/${project.id}/composition.mp4`}
+                  controls
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="text-center space-y-3 p-8">
+                  <div className="w-16 h-16 bg-primary/20 text-primary border border-primary/30 rounded-2xl flex items-center justify-center mx-auto shadow-glow-subtle">
+                    <Play className="w-8 h-8 ml-1" />
+                  </div>
+                  <p className="text-body-sm text-text-secondary">
+                    {isGenerating
+                      ? 'Automated Video Pipeline Generating…'
+                      : 'Video composition will appear here upon completion.'}
+                  </p>
                 </div>
-                <p className="text-gray-400 text-sm">
-                  {isGenerating
-                    ? "Generating Video Pipeline..."
-                    : "Video Composition Ready upon Completion"}
-                </p>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          </Card>
         </div>
 
-        {/* Right: Export & Download Actions Card */}
+        {/* Right: Export & Assets */}
         <div className="space-y-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
-            <h3 className="font-semibold text-white text-base flex items-center gap-2 border-b border-gray-800 pb-3">
-              <Download className="w-5 h-5 text-indigo-400" /> Export & Assets
-            </h3>
-
-            <div className="space-y-2.5">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-heading-sm">
+                <Download className="w-4 h-4 text-primary" /> Export & Assets
+              </CardTitle>
+              <CardDescription>
+                Download generated production assets and stage checkpoints.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
               <a
                 href={videoDownloadUrl}
                 download
-                className="w-full px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium flex items-center justify-between text-gray-100 transition"
+                className="w-full px-4 py-3 bg-bg-input hover:bg-bg-elevated border border-border hover:border-border-strong rounded-xl text-body-sm font-medium flex items-center justify-between text-text-primary transition-all group"
               >
-                <span className="flex items-center gap-2">
-                  <Film className="w-4 h-4 text-indigo-400" /> Final MP4 Video
+                <span className="flex items-center gap-2.5">
+                  <Film className="w-4 h-4 text-primary" /> Final MP4 Video
                 </span>
-                <Download className="w-3.5 h-3.5 text-gray-400" />
+                <Download className="w-4 h-4 text-text-muted group-hover:text-text-primary transition-colors" />
               </a>
 
               <a
                 href={subtitlesDownloadUrl}
                 download
-                className="w-full px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium flex items-center justify-between text-gray-100 transition"
+                className="w-full px-4 py-3 bg-bg-input hover:bg-bg-elevated border border-border hover:border-border-strong rounded-xl text-body-sm font-medium flex items-center justify-between text-text-primary transition-all group"
               >
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2.5">
                   <FileText className="w-4 h-4 text-emerald-400" /> Subtitles (.srt)
                 </span>
-                <Download className="w-3.5 h-3.5 text-gray-400" />
+                <Download className="w-4 h-4 text-text-muted group-hover:text-text-primary transition-colors" />
               </a>
 
               <a
                 href={checkpointDownloadUrl}
                 download
-                className="w-full px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs font-medium flex items-center justify-between text-gray-100 transition"
+                className="w-full px-4 py-3 bg-bg-input hover:bg-bg-elevated border border-border hover:border-border-strong rounded-xl text-body-sm font-medium flex items-center justify-between text-text-primary transition-all group"
               >
-                <span className="flex items-center gap-2">
+                <span className="flex items-center gap-2.5">
                   <Sparkles className="w-4 h-4 text-amber-400" /> Script Checkpoint (.json)
                 </span>
-                <Download className="w-3.5 h-3.5 text-gray-400" />
+                <Download className="w-4 h-4 text-text-muted group-hover:text-text-primary transition-colors" />
               </a>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectOverviewSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-end">
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-10 w-36" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          <Skeleton className="aspect-video w-full" />
+        </div>
+        <div>
+          <Skeleton className="h-64 w-full" />
         </div>
       </div>
     </div>

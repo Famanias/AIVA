@@ -129,11 +129,16 @@ Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 - [x] Implement Checkpoint Resumability API (`POST /api/v1/projects/[id]/execute`) with zero LLM API calls required during rendering
 - [x] Implement strongly typed `CanvasConfig` schema (`width`, `height`, `fps`, `aspect_ratio`) separating creative intent (`GenerationProfile`) from rendering geometry
 - [x] Implement Remotion transparent VP9 WebM alpha export (`pixelFormat: 'yuva420p'`, `imageFormat: 'png'`) with preserved Webpack bundle caching
-- [x] Implement dynamic FFmpeg canvas geometry scaling (`scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1`) and `0:0` overlay positioning across 9:16 Shorts (1080x1920) and 16:9 YouTube (1920x1080) video formats
+## 14. UI/UX Redesign (Dark Black/Red Theme & Design System)
+
+- [x] Implemented Tailwind v4 CSS-first design tokens (`tokens.css`) with Syne, Inter, JetBrains Mono typography and black/red color palette
+- [x] Implemented Radix UI primitives (`Button`, `Card`, `Input`, `Select`, `Modal`, `Toast`, `Tooltip`, `Dropdown`, `Tabs`, `Table`, `Progress`, `Avatar`, `Badge`, `Checkbox`, `Switch`, `Alert`, `Skeleton`, `EmptyState`)
+- [x] Implemented App Shell (`Header`, `Footer`, `DashboardLayout`, `RootLayout`) with accessible skip links and responsive navigation
+- [x] Redesigned Home Dashboard (`/`), Login/Signup (`/login`), Tabbed Settings console (`/settings`), Projects Catalog (`/projects`), Project Overview (`/projects/[id]`), and Timeline Studio (`/projects/[id]/timeline`)
 
 ---
 
 # Completed
 
-- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, and Deterministic Project Artifact Persistence System with Checkpoint Resumability.
+- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, Deterministic Project Artifact Persistence System with Checkpoint Resumability, and Full Web App Redesign.
 

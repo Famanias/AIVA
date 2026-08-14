@@ -32,6 +32,11 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ status: 'success', data: res.rows });
   } catch (err: any) {
+    const isConnRefused = err.code === 'ECONNREFUSED' || (err.errors && err.errors.some((e: any) => e.code === 'ECONNREFUSED'));
+    if (isConnRefused) {
+      console.warn('[Projects Route GET] Database is unreachable. Returning empty array fallback. (Run `pnpm services:up` to start PostgreSQL)');
+      return NextResponse.json({ status: 'success', data: [] });
+    }
     console.error('[Projects Route GET] Error:', err);
     return NextResponse.json({ status: 'error', error: err.message }, { status: 500 });
   }
@@ -118,6 +123,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ status: 'success', project, job }, { status: 201 });
   } catch (err: any) {
+    const isConnRefused = err.code === 'ECONNREFUSED' || (err.errors && err.errors.some((e: any) => e.code === 'ECONNREFUSED'));
+    if (isConnRefused) {
+      return NextResponse.json({
+        status: 'error',
+        error: 'Database is offline or unreachable. Please start PostgreSQL with `pnpm services:up`.',
+      }, { status: 503 });
+    }
     console.error('[Project Route] Error creating project:', err);
     return NextResponse.json({ status: 'error', error: err.message }, { status: 500 });
   }

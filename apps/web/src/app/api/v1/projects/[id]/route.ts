@@ -38,7 +38,14 @@ export async function GET(
         scenes: scenesRes.rows,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
+    const isConnRefused = error.code === 'ECONNREFUSED' || (error.errors && error.errors.some((e: any) => e.code === 'ECONNREFUSED'));
+    if (isConnRefused) {
+      return NextResponse.json({
+        status: "error",
+        message: "Database service offline. Please start PostgreSQL with `pnpm services:up`.",
+      }, { status: 503 });
+    }
     return NextResponse.json(
       { status: "error", message: (error as Error).message },
       { status: 500 }

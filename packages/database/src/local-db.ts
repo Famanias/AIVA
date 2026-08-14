@@ -24,6 +24,10 @@ export function getPool(): Pool {
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 5000,
     });
+    poolInstance.on("error", (err) => {
+      // Prevent unhandled pool background errors from crashing process when DB is offline
+      console.warn("[Database Pool] Connection error:", err.message);
+    });
   }
   return poolInstance;
 }
