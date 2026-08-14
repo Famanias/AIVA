@@ -1,0 +1,13 @@
+{
+  "name": "aiva-workers",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Python FastAPI workers for AIVA video generation pipeline.",
+  "scripts": {
+    "dev": "tsx run_worker.ts",
+    "start": "tsx run_worker.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.1"
+  }
+}

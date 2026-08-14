@@ -36,12 +36,29 @@ export default function ProjectOverviewPage() {
   const [resuming, setResuming] = useState(false);
 
   useEffect(() => {
-    fetchProject();
+    fetchProject(true);
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/v1/projects/${projectId}`);
+        const data = await res.json();
+        if (data.status === "success" && data.data) {
+          setProject(data.data);
+          if (data.data.status === "completed" || data.data.status === "failed") {
+            clearInterval(interval);
+          }
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    }, 2000);
+
+    return () => clearInterval(interval);
   }, [projectId]);
 
-  const fetchProject = async () => {
+  const fetchProject = async (isInitial = false) => {
     try {
-      setLoading(true);
+      if (isInitial) setLoading(true);
       const res = await fetch(`/api/v1/projects/${projectId}`);
       const data = await res.json();
       if (data.status === "success" && data.data) {
@@ -50,7 +67,7 @@ export default function ProjectOverviewPage() {
     } catch (err) {
       console.error("Failed to load project details:", err);
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   };
 
