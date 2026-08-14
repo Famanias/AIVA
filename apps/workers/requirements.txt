@@ -8,9 +8,7 @@ pydantic-settings==2.4.0
 anyio==4.6.0
 
 # LLM providers
-google-generativeai==0.8.0
-groq==0.11.0
-openai==1.51.0  # used for OpenRouter compatibility
+openai==1.51.0  # OpenAI-compatible protocol (OpenRouter, Groq, OmniRoute, Ollama /v1, OpenAI)
 
 # Web search
 tavily-python==0.3.9
