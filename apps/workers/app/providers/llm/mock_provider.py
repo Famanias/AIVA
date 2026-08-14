@@ -1,8 +1,9 @@
+import asyncio
 import json
-from typing import Any
+from typing import Any, AsyncGenerator
 import structlog
 
-from app.providers.llm.base import ILLMProvider
+from app.providers.llm.base import ILLMProvider, ModelInfo
 from app.models.telemetry import TelemetryContext
 
 logger = structlog.get_logger(__name__)
@@ -63,3 +64,18 @@ class MockLLMProvider(ILLMProvider):
             
         # Fallback empty object
         return {}
+
+    async def generate_stream(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        context: Any = None,
+    ) -> AsyncGenerator[str, None]:
+        text = "This is a deterministic mock streaming response for CI."
+        for word in text.split():
+            yield word + " "
+            await asyncio.sleep(0.01)
+
+    async def list_models(self) -> list[ModelInfo]:
+        return [ModelInfo(id="mock-model", owned_by="aiva-mock")]
+

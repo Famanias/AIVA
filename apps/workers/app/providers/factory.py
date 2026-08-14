@@ -21,54 +21,108 @@ logger = structlog.get_logger(__name__)
 
 async def get_llm_provider_async() -> ILLMProvider:
     """Return the dynamically configured LLM provider instance based on app_settings."""
-    provider_name = (await get_app_setting("llm_provider")) or "gemini"
-
-    if provider_name == "gemini":
-        from app.providers.llm.gemini_provider import GeminiProvider
-        api_key = (await get_app_setting("gemini_api_key")) or ""
-        model = (await get_app_setting("gemini_model")) or "gemini-1.5-flash"
-        logger.info("llm_provider_loaded", provider="gemini", model=model)
-        return GeminiProvider(api_key=api_key, model=model)
-
-    if provider_name == "groq":
-        from app.providers.llm.groq_provider import GroqProvider
-        api_key = (await get_app_setting("groq_api_key")) or ""
-        model = (await get_app_setting("groq_model")) or "llama-3.3-70b-versatile"
-        logger.info("llm_provider_loaded", provider="groq", model=model)
-        return GroqProvider(api_key=api_key, model=model)
-
-    if provider_name == "openrouter" or provider_name == "openai":
-        from app.providers.llm.openrouter_provider import OpenRouterProvider
-        api_key = (await get_app_setting("openrouter_api_key")) or (await get_app_setting("openai_api_key")) or ""
-        model = (await get_app_setting("openrouter_model")) or "google/gemini-flash-1.5"
-        logger.info("llm_provider_loaded", provider="openrouter", model=model)
-        return OpenRouterProvider(api_key=api_key, model=model)
+    provider_name = (await get_app_setting("llm_provider")) or "openai_compatible"
 
     if provider_name == "ollama":
         from app.providers.llm.ollama_provider import OllamaProvider
-        base_url = (await get_app_setting("ollama_base_url")) or "http://localhost:11434"
-        model = (await get_app_setting("ollama_model")) or "llama3.2"
+        base_url = (
+            (await get_app_setting("ollama_base_url"))
+            or (await get_app_setting("llm_base_url"))
+            or "http://localhost:11434"
+        )
+        model = (
+            (await get_app_setting("ollama_model"))
+            or (await get_app_setting("llm_model"))
+            or "llama3.2"
+        )
         logger.info("llm_provider_loaded", provider="ollama", base_url=base_url, model=model)
         return OllamaProvider(base_url=base_url, model=model)
 
-    # Fallback to Gemini
-    from app.providers.llm.gemini_provider import GeminiProvider
-    api_key = (await get_app_setting("gemini_api_key")) or ""
-    return GeminiProvider(api_key=api_key)
+    # Default: openai_compatible (openrouter, groq, omniroute, ollama/v1, openai)
+    from app.providers.llm.openai_compatible_provider import OpenAICompatibleProvider
+    base_url = (await get_app_setting("llm_base_url")) or "https://openrouter.ai/api/v1"
+    api_key = (await get_app_setting("llm_api_key")) or ""
+    model = (await get_app_setting("llm_model")) or "google/gemini-flash-1.5"
+
+    if not api_key:
+        legacy = await _legacy_llm_config(provider_name)
+        if legacy:
+            logger.warning("deprecated_llm_keys", msg="Migrate to llm_base_url/llm_api_key/llm_model")
+            return legacy
+
+    logger.info("llm_provider_loaded", provider="openai_compatible", base_url=base_url, model=model)
+    return OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model)
+
+
+async def _legacy_llm_config(provider_name: str) -> ILLMProvider | None:
+    """Read old per-vendor keys during migration window. Remove in 2 releases."""
+    from app.providers.llm.openai_compatible_provider import OpenAICompatibleProvider
+
+    if provider_name == "gemini":
+        key = await get_app_setting("gemini_api_key")
+        if key:
+            model = (await get_app_setting("gemini_model")) or "gemini-1.5-flash"
+            return OpenAICompatibleProvider(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=key,
+                model=model,
+            )
+    elif provider_name == "groq":
+        key = await get_app_setting("groq_api_key")
+        if key:
+            model = (await get_app_setting("groq_model")) or "llama-3.3-70b-versatile"
+            return OpenAICompatibleProvider(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=key,
+                model=model,
+            )
+    elif provider_name in ("openrouter", "openai"):
+        key = (await get_app_setting("openrouter_api_key")) or (await get_app_setting("openai_api_key"))
+        if key:
+            base_url = "https://api.openai.com/v1" if provider_name == "openai" else "https://openrouter.ai/api/v1"
+            model = (await get_app_setting("openrouter_model")) or "google/gemini-flash-1.5"
+            return OpenAICompatibleProvider(
+                base_url=base_url,
+                api_key=key,
+                model=model,
+            )
+    return None
 
 
 @lru_cache
 def get_llm_provider() -> ILLMProvider:
     """Sync fallback for legacy callers."""
     settings = get_settings()
-    if settings.llm_provider == "groq":
-        from app.providers.llm.groq_provider import GroqProvider
-        return GroqProvider(api_key=settings.groq_api_key, model=settings.groq_model)
-    if settings.llm_provider == "openrouter":
-        from app.providers.llm.openrouter_provider import OpenRouterProvider
-        return OpenRouterProvider(api_key=settings.openrouter_api_key, model=settings.openrouter_model)
-    from app.providers.llm.gemini_provider import GeminiProvider
-    return GeminiProvider(api_key=settings.gemini_api_key, model=settings.gemini_model)
+    if settings.llm_provider == "ollama":
+        from app.providers.llm.ollama_provider import OllamaProvider
+        return OllamaProvider(base_url=settings.ollama_base_url, model=settings.ollama_model)
+
+    from app.providers.llm.openai_compatible_provider import OpenAICompatibleProvider
+    base_url = getattr(settings, "llm_base_url", "https://openrouter.ai/api/v1")
+    api_key = getattr(settings, "llm_api_key", "")
+    model = getattr(settings, "llm_model", "google/gemini-flash-1.5")
+
+    if not api_key:
+        if settings.llm_provider == "groq" and settings.groq_api_key:
+            return OpenAICompatibleProvider(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=settings.groq_api_key,
+                model=settings.groq_model,
+            )
+        if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
+            return OpenAICompatibleProvider(
+                base_url="https://openrouter.ai/api/v1",
+                api_key=settings.openrouter_api_key,
+                model=settings.openrouter_model,
+            )
+        if settings.gemini_api_key:
+            return OpenAICompatibleProvider(
+                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+                api_key=settings.gemini_api_key,
+                model=settings.gemini_model,
+            )
+
+    return OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model)
 
 
 async def get_search_provider_async() -> ISearchProvider:

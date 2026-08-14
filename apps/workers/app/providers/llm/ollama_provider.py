@@ -1,11 +1,11 @@
 import json
 import re
-from typing import Any
+from typing import Any, AsyncGenerator
 import httpx
 import structlog
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
-from app.providers.llm.base import ILLMProvider, LLMProviderError
+from app.providers.llm.base import ILLMProvider, LLMProviderError, ModelInfo
 from app.models.telemetry import TelemetryContext
 
 logger = structlog.get_logger(__name__)
@@ -95,3 +95,47 @@ class OllamaProvider(ILLMProvider):
         except Exception as e:
             logger.error("ollama_generate_json_failed", error=str(e))
             raise LLMProviderError("ollama", f"generate_json failed: {e}", e)
+
+    async def generate_stream(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        context: Any = None,
+    ) -> AsyncGenerator[str, None]:
+        try:
+            full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+            payload = {
+                "model": self._model_name,
+                "prompt": full_prompt,
+                "stream": True,
+            }
+            logger.debug("ollama_generate_stream", model=self._model_name, base_url=self._base_url)
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream("POST", f"{self._base_url}/api/generate", json=payload) as res:
+                    res.raise_for_status()
+                    async for line in res.aiter_lines():
+                        if line:
+                            chunk = json.loads(line)
+                            delta = chunk.get("response", "")
+                            if delta:
+                                yield delta
+        except Exception as e:
+            logger.error("ollama_generate_stream_failed", error=str(e))
+            raise LLMProviderError("ollama", f"generate_stream failed: {e}", e)
+
+    async def list_models(self) -> list[ModelInfo]:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.get(f"{self._base_url}/api/tags")
+                res.raise_for_status()
+                data = res.json()
+                return [
+                    ModelInfo(id=m.get("name", ""), owned_by="ollama")
+                    for m in data.get("models", [])
+                    if m.get("name")
+                ]
+        except Exception as e:
+            logger.debug("ollama_list_models_failed", error=str(e))
+            return [ModelInfo(id=self._model_name, owned_by="ollama")]
+

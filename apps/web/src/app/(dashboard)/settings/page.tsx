@@ -28,13 +28,13 @@ export default function SettingsPage() {
   } | null>(null);
 
   const [form, setForm] = useState({
-    llm_provider: "gemini",
+    llm_provider: "openai_compatible",
+    llm_base_url: "",
+    llm_api_key: "",
+    llm_model: "",
     tts_provider: "edge_tts",
     image_provider: "sdxl",
     broll_provider: "pexels",
-    gemini_api_key: "",
-    groq_api_key: "",
-    openai_api_key: "",
     elevenlabs_api_key: "",
     pexels_api_key: "",
     cloudflare_api_key: "",
@@ -42,9 +42,8 @@ export default function SettingsPage() {
     ollama_model: "llama3.2",
   });
 
-  useEffect(() => {
-    fetchSettings();
-  }, []);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   const fetchSettings = async () => {
     try {
@@ -58,6 +57,26 @@ export default function SettingsPage() {
       console.error("Failed to load settings:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSettings();
+  }, []);
+
+  const handleFetchModels = async () => {
+    setFetchingModels(true);
+    try {
+      const res = await fetch("/api/v1/settings/models");
+      const data = await res.json();
+      if (data.models) {
+        setAvailableModels(data.models);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -181,9 +200,7 @@ export default function SettingsPage() {
                 onChange={handleChange}
                 className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
               >
-                <option value="gemini">Google Gemini 1.5 Flash</option>
-                <option value="groq">Groq (Llama 3.3 / DeepSeek)</option>
-                <option value="openai">OpenAI (GPT-4o / OpenRouter)</option>
+                <option value="openai_compatible">OpenAI-Compatible Endpoint</option>
                 <option value="ollama">Ollama (100% Offline Local Model)</option>
               </select>
             </div>
@@ -235,6 +252,108 @@ export default function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {/* Unified LLM Configuration */}
+        {form.llm_provider === "openai_compatible" && (
+          <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
+            <h2 className="text-xl font-semibold text-white flex items-center gap-2 border-b border-gray-800 pb-3">
+              <Server className="w-5 h-5 text-indigo-400" /> OpenAI-Compatible LLM Configuration
+            </h2>
+            
+            <div className="flex flex-wrap gap-2 mb-2 items-center">
+              <span className="text-sm text-gray-400">Presets:</span>
+              <button
+                type="button"
+                onClick={() => setForm(prev => ({ ...prev, llm_base_url: "https://openrouter.ai/api/v1" }))}
+                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
+              >
+                Cloud / Direct (OpenRouter)
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm(prev => ({ ...prev, llm_base_url: "http://localhost:20128/v1" }))}
+                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
+              >
+                Local Gateway (OmniRoute)
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm(prev => ({ ...prev, llm_base_url: "http://localhost:11434/v1" }))}
+                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-xs text-gray-300 rounded border border-gray-700 transition"
+              >
+                Local Hardware (Ollama /v1)
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Base URL
+                </label>
+                <input
+                  type="text"
+                  name="llm_base_url"
+                  value={form.llm_base_url}
+                  onChange={handleChange}
+                  placeholder="https://openrouter.ai/api/v1"
+                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  API Key
+                </label>
+                <input
+                  type="password"
+                  name="llm_api_key"
+                  value={form.llm_api_key}
+                  onChange={handleChange}
+                  placeholder="sk-..."
+                  className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Model ID
+                </label>
+                <div className="flex gap-3">
+                  {availableModels.length > 0 ? (
+                    <select
+                      name="llm_model"
+                      value={form.llm_model}
+                      onChange={handleChange}
+                      className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                    >
+                      {availableModels.map(m => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      name="llm_model"
+                      value={form.llm_model}
+                      onChange={handleChange}
+                      placeholder="google/gemini-flash-1.5"
+                      className="flex-1 bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleFetchModels}
+                    disabled={fetchingModels || !form.llm_base_url}
+                    className="px-4 py-2.5 bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-600/30 rounded-lg text-sm flex items-center gap-2 transition disabled:opacity-50"
+                  >
+                    {fetchingModels ? <RefreshCw className="animate-spin w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                    Fetch Models
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Local AI Models (Ollama) */}
         <section className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-6">
@@ -313,47 +432,6 @@ export default function SettingsPage() {
             <Key className="w-5 h-5 text-indigo-400" /> Cloud API Keys (AES-256 Encrypted)
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Google Gemini API Key
-              </label>
-              <input
-                type="password"
-                name="gemini_api_key"
-                value={form.gemini_api_key}
-                onChange={handleChange}
-                placeholder="AIzaSy..."
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                Groq API Key
-              </label>
-              <input
-                type="password"
-                name="groq_api_key"
-                value={form.groq_api_key}
-                onChange={handleChange}
-                placeholder="gsk_..."
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                OpenAI / OpenRouter API Key
-              </label>
-              <input
-                type="password"
-                name="openai_api_key"
-                value={form.openai_api_key}
-                onChange={handleChange}
-                placeholder="sk-proj-..."
-                className="w-full bg-gray-950 border border-gray-800 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-sm"
-              />
-            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">

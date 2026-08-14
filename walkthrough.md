@@ -1,6 +1,9 @@
-# Walkthrough: LLM Provider Consolidation — Phase 1+2
+# Walkthrough: LLM Provider Consolidation — Phase 1+3
 
 Consolidated `GeminiProvider`, `GroqProvider`, and `OpenRouterProvider` into a single, unified `OpenAICompatibleProvider` conforming to `ILLMProvider`. Extended `ILLMProvider` with `generate_stream()` and `list_models()`. Retained `OllamaProvider` as a dedicated native adapter. Added database migration for new configuration keys and full test coverage across all provider implementations and factory resolution paths.
+- **Unified Next.js API configuration**: Removed legacy API keys from settings routes in favor of `llm_base_url` and `llm_api_key`.
+- **Dynamic Model Fetching**: Added a new Next.js endpoint to fetch models directly from the provided OpenAI-compatible endpoint.
+- **Updated Settings UI**: Replaced the legacy vendor keys with a unified LLM configuration section featuring endpoint presets and model fetching capabilities.
 
 ---
 
@@ -66,16 +69,16 @@ pnpm certify
 To manually verify Phase 1+2 in your environment:
 
 1. **Verify Python Provider Imports & Initialization**:
-   Open an interactive Python session using the workers venv:
+   Open an interactive Python session using the workers venv from the root directory by setting `PYTHONPATH`:
    ```powershell
-   .\apps\workers\venv\Scripts\python -c "from app.providers.factory import get_llm_provider; p = get_llm_provider(); print('Loaded provider:', type(p).__name__, 'Base URL:', p._base_url)"
+   $env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\python -c "from app.providers.factory import get_llm_provider; p = get_llm_provider(); print('Loaded provider:', type(p).__name__, 'Base URL:', p._base_url)"
    ```
    **Expected Result**: Prints `Loaded provider: OpenAICompatibleProvider Base URL: https://openrouter.ai/api/v1` (or your configured URL).
 
 2. **Verify Legacy Key Fallback (if applicable)**:
    In `.env`, if you temporarily set `GEMINI_API_KEY=test_key` with empty `LLM_API_KEY`:
    ```powershell
-   .\apps\workers\venv\Scripts\python -c "import asyncio; from app.providers.factory import get_llm_provider_async; p = asyncio.run(get_llm_provider_async()); print('Resolved provider:', type(p).__name__, 'Base URL:', p._base_url)"
+   $env:PYTHONPATH="apps/workers"; .\apps\workers\venv\Scripts\python -c "import asyncio; from app.providers.factory import get_llm_provider_async; p = asyncio.run(get_llm_provider_async()); print('Resolved provider:', type(p).__name__, 'Base URL:', p._base_url)"
    ```
    **Expected Result**: Logs a deprecation warning and initializes `OpenAICompatibleProvider` pointing to `https://generativelanguage.googleapis.com/v1beta/openai/`.
 

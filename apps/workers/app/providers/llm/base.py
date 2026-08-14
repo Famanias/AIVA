@@ -6,7 +6,15 @@ All LLM access goes through this interface.
 See RULES Rule 5 — Abstract External Providers.
 """
 from abc import ABC, abstractmethod
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, AsyncGenerator
+
+
+@dataclass
+class ModelInfo:
+    id: str
+    owned_by: str | None = None
+    context_window: int | None = None
 
 
 class ILLMProvider(ABC):
@@ -59,6 +67,36 @@ class ILLMProvider(ABC):
 
         Raises:
             LLMProviderError: If the provider fails or returns invalid JSON.
+        """
+        ...
+
+    @abstractmethod
+    async def generate_stream(
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        context: Any = None,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Generate streaming text deltas from a prompt.
+
+        Args:
+            prompt: The user message/instruction.
+            system_prompt: Optional system-level instruction.
+            context: Optional telemetry context.
+
+        Yields:
+            Text chunks (str) as they arrive.
+        """
+        ...
+
+    @abstractmethod
+    async def list_models(self) -> list[ModelInfo]:
+        """
+        List available models for this provider/endpoint.
+
+        Returns:
+            List of ModelInfo objects.
         """
         ...
 

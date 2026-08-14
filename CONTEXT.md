@@ -46,6 +46,26 @@ The next phase introduces publishing, scheduling, analytics, automation, and exp
 
 ---
 
+# Language
+
+**OpenAI-Compatible Endpoint**:
+Any LLM server that speaks the OpenAI Chat Completions protocol (e.g. OpenRouter, Groq, OmniRoute, Ollama's `/v1`, OpenAI). AIVA addresses all of them identically via a Base URL + API Key + Model, never by vendor SDK.
+_Avoid_: provider, vendor, LLM service
+
+**OpenAICompatibleProvider**:
+The single LLM adapter that fulfills the `ILLMProvider` contract by speaking the OpenAI-compatible protocol to any endpoint. Replaces per-vendor providers (Gemini, Groq, OpenRouter) which are deprecated.
+_Avoid_: OpenAIProvider (misleading — we integrate the protocol, not the OpenAI vendor)
+
+**ModelInfo**:
+A discovered model's identity at an endpoint — its id, owning organization, and context window when known.
+_Avoid_: model name, model entry
+
+**Provider Capability**:
+A feature an endpoint may or may not support (streaming, JSON mode, model listing). AIVA currently assumes best-effort support and degrades gracefully; explicit capability detection is deferred.
+_Avoid_: feature flag, endpoint mode
+
+---
+
 # What Exists
 
 | Category | Status |

@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAppSetting, setAppSetting, query } from "@aiva/database";
+import { getAppSetting, setAppSetting } from "@aiva/database";
 
 const SETTINGS_KEYS = [
   "llm_provider",
+  "llm_base_url",
+  "llm_api_key",
+  "llm_model",
   "tts_provider",
   "image_provider",
   "broll_provider",
-  "gemini_api_key",
-  "groq_api_key",
-  "openai_api_key",
   "elevenlabs_api_key",
   "pexels_api_key",
   "cloudflare_api_key",
@@ -17,9 +17,7 @@ const SETTINGS_KEYS = [
 ];
 
 const ENCRYPTED_KEYS = [
-  "gemini_api_key",
-  "groq_api_key",
-  "openai_api_key",
+  "llm_api_key",
   "elevenlabs_api_key",
   "pexels_api_key",
   "cloudflare_api_key",
@@ -32,7 +30,9 @@ function maskApiKey(key: string | null): string {
 }
 
 const DEFAULT_SETTINGS: Record<string, string> = {
-  llm_provider: "gemini",
+  llm_provider: "openai_compatible",
+  llm_base_url: "https://openrouter.ai/api/v1",
+  llm_model: "google/gemini-flash-1.5",
   tts_provider: "edge_tts",
   image_provider: "sdxl",
   broll_provider: "pexels",

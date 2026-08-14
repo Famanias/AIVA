@@ -72,7 +72,7 @@ async def get_app_setting(key: str) -> Optional[str]:
     """
     Reads an app setting by key from `app_settings` PostgreSQL table.
     Decrypts automatically if `is_encrypted` is True.
-    Falls back to os.getenv(key.upper()) if missing in database.
+    Falls back to pydantic settings (.env) and then os.getenv if missing in database.
     """
     try:
         pool = await get_db_pool()
@@ -90,4 +90,15 @@ async def get_app_setting(key: str) -> Optional[str]:
     except Exception as err:
         logger.warning("Database app_settings lookup failed, using env fallback", key=key, error=str(err))
     
+    # Fallback to Pydantic settings (.env file)
+    try:
+        from app.core.config import get_settings
+        settings = get_settings()
+        if hasattr(settings, key.lower()):
+            val = getattr(settings, key.lower())
+            if val:
+                return str(val)
+    except Exception:
+        pass
+        
     return os.getenv(key.upper()) or os.getenv(key)

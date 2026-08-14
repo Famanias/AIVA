@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — AIVA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .shallow { background: linear-gradient(135deg, #78350f, #92400e); }
+      .module-box { border: 2px solid #334155; border-radius: 8px; padding: 8px; }
+      .iface-box { border: 2px dashed #64748b; border-radius: 6px; padding: 6px; margin-bottom: 4px; }
+      .impl-box { border: 2px solid #0ea5e9; border-radius: 6px; padding: 6px; }
+      .arrow { fill: none; stroke: #334155; stroke-width: 1.5px; }
+      .arrow-leak { fill: none; stroke: #dc2626; stroke-width: 1.5px; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+      <header class="border-b border-slate-200 pb-8">
+        <h1 class="text-3xl font-bold text-slate-900">AIVA — Architecture Review</h1>
+        <p class="text-slate-500 mt-1">Generated 2026-08-14 · Branch: pivot-to-selfhosting-localfirst</p>
+        <div class="mt-4 flex flex-wrap gap-2 text-xs">
+          <span class="px-2 py-1 bg-emerald-100 text-emerald-800 rounded">Strong</span>
+          <span class="px-2 py-1 bg-amber-100 text-amber-800 rounded">Worth exploring</span>
+          <span class="px-2 py-1 bg-slate-100 text-slate-600 rounded">Speculative</span>
+          <span class="px-2 py-1 bg-rose-100 text-rose-800 rounded">ADR conflict</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- Candidate 1: Collapse LLM provider factory to OpenAI-compatible provider -->
+        <article class="border border-slate-200 rounded-xl p-6 bg-white space-y-6">
+          <header class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold">Collapse LLM provider factory to OpenAI-compatible provider</h2>
+            <span class="px-3 py-1 bg-emerald-100 text-emerald-800 text-sm font-medium rounded-full">Strong</span>
+          </header>
+
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">BEFORE — Shallow factory + 4 SDK wrappers</h4>
+              <pre class="mermaid">
+flowchart LR
+  subgraph Factory[get_llm_provider_async]
+    F1[llm_provider setting] --> F2{switch}
+    F2 -->|gemini| G[GeminiProvider]
+    F2 -->|groq| Q[GroqProvider]
+    F2 -->|openrouter| R[OpenRouterProvider]
+    F2 -->|ollama| O[OllamaProvider]
+  end
+
+  G -->|google-generativeai SDK| I1[ILLMProvider]
+  Q -->|AsyncGroq SDK| I1
+  R -->|AsyncOpenAI SDK| I1
+  O -->|raw httpx /api/generate| I1
+
+  I1 -->|generate_text<br/>generate_json| Agents[outline_agent<br/>script_director_agent<br/>research_agent]
+
+  classDef shallow fill:#fef3c7,stroke:#f59e0b,stroke-width:2px;
+  classDef leak fill:#fee2e2,stroke:#dc2626,stroke-width:2px;
+  class G,Q,R,O shallow;
+  class F2 leak;
+</pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">AFTER — Single deep OpenAICompatibleProvider</h4>
+              <pre class="mermaid">
+flowchart LR
+  subgraph Factory[get_llm_provider_async]
+    F1[llm_base_url<br/>llm_api_key<br/>llm_model] --> F2[OpenAICompatibleProvider]
+  end
+
+  F2 -->|openai SDK| I1[ILLMProvider]
+  I1 -->|generate_text<br/>generate_json<br/>generate_stream| Agents[outline_agent<br/>script_director_agent<br/>research_agent]
+
+  classDef deep fill:#dbeafe,stroke:#3b82f6,stroke-width:2px;
+  classDef iface fill:#e0e7ff,stroke:#6366f1,stroke-width:2px;
+  class F2 deep;
+  class I1 iface;
+</pre>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <strong class="text-slate-700">Files</strong>
+              <ul class="mt-1 space-y-1 font-mono text-xs text-slate-600">
+                <li>apps/workers/app/providers/llm/base.py</li>
+                <li>apps/workers/app/providers/llm/openai_provider.py (NEW)</li>
+                <li>apps/workers/app/providers/factory.py</li>
+                <li>DELETE: gemini_provider.py, groq_provider.py, openrouter_provider.py</li>
+                <li>apps/web/src/app/(dashboard)/settings/page.tsx</li>
+                <li>apps/web/src/app/api/v1/settings/route.ts</li>
+              </ul>
+            </div>
+            <div>
+              <strong class="text-slate-700">Problem</strong>
+              <p class="mt-1 text-slate-600">LLM provider factory is <strong>shallow</strong> — the interface (<code>ILLMProvider</code>) is nearly as complex as the 4 implementations combined. Each wrapper translates one SDK to the same 2 methods. Telemetry lives only in GeminiProvider (leakage). No streaming. Fallbacks absent. UI has 4 API-key fields but only Ollama exposes model/base-URL.</p>
+            </div>
+            <div>
+              <strong class="text-slate-700">Solution</strong>
+              <p class="mt-1 text-slate-600">Replace 4 wrappers with one <code>OpenAICompatibleProvider</code> using the <code>openai</code> SDK. Factory reads generic <code>llm_base_url</code>, <code>llm_api_key</code>, <code>llm_model</code>. UI pivots to "OpenAI-Compatible Endpoint" presets (Cloud, Local Gateway/OmniRoute, Local Hardware/Ollama). Add <code>generate_stream()</code> to <code>ILLMProvider</code> and <code>list_models()</code> for model discovery.</p>
+            </div>
+          </div>
+
+          <div class="border-l-4 border-emerald-500 bg-emerald-50 p-4 text-sm">
+            <strong class="text-emerald-800">Wins (locality / leverage)</strong>
+            <ul class="mt-2 space-y-1 text-emerald-700">
+              <li>locality: all provider SDK logic concentrates in one module</li>
+              <li>leverage: one interface, N call sites unchanged (agents only see ILLMProvider)</li>
+              <li>interface shrinks: delete 3 provider SDK deps (google-generativeai, groq, openrouter not needed)</li>
+              <li>tests hit one interface: mock_provider already covers the seam</li>
+              <li>streaming becomes a first-class capability, not an afterthought</li>
+              <li>OmniRoute/Ollama/OpenRouter all work without code changes</li>
+            </ul>
+          </div>
+
+          <div class="border-l-4 border-amber-500 bg-amber-50 p-4 text-sm">
+            <strong class="text-amber-800">��� ADR conflict</strong>
+            <p class="mt-1 text-amber-700">The review document (§17 Q3) and both external reviewers flag <strong>structured output</strong> as the open risk. Current code only enforces schema on Gemini (<code>response_mime_type</code>). Groq/OpenRouter/Ollama use weak <code>json_object</code> mode. Consolidation does not worsen this — but you must decide: accept weak JSON mode + post-validation, or add <code>ProviderCapabilities</code> detection (see Candidate 3).</p>
+          </div>
+        </article>
+
+        <!-- Candidate 2: Unify settings storage / encryption across Python + Node -->
+        <article class="border border-slate-200 rounded-xl p-6 bg-white space-y-6">
+          <header class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold">Unify settings storage and encryption across Python and Node</h2>
+            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm font-medium rounded-full">Worth exploring</span>
+          </header>
+
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">BEFORE — Duplicated crypto + divergent config paths</h4>
+              <pre class="mermaid">
+flowchart LR
+  subgraph Python[Python Worker]
+    P1[get_llm_provider_async] --> P2[get_app_setting]
+    P2 --> P3[asyncpg → app_settings]
+    P3 --> P4[decrypt_secret in db.py]
+    P4 --> P5[AES-GCM key = sha256(APP_SECRET)]
+  end
+
+  subgraph Node[Next.js Web]
+    N1[settings API route] --> N2[getAppSetting/setAppSetting]
+    N2 --> N3[pg Pool → app_settings]
+    N3 --> N4[encryptSecret/decryptSecret in crypto.ts]
+    N4 --> N5[AES-GCM key = sha256(APP_SECRET)]
+  end
+
+  classDef leak fill:#fee2e2,stroke:#dc2626,stroke-width:2px;
+  class P4,N4 leak;
+</pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">AFTER — Single crypto module, single source of truth</h4>
+              <pre class="mermaid">
+flowchart LR
+  subgraph Shared[Shared crypto (wasm or npm pkg)]
+    S1[encrypt / decrypt]
+    S2[key derivation from APP_SECRET]
+  end
+
+  subgraph Python[Python Worker]
+    P1[get_llm_provider_async] --> P2[get_app_setting] --> S1
+  end
+
+  subgraph Node[Next.js Web]
+    N1[settings API route] --> N2[getAppSetting/setAppSetting] --> S1
+  end
+
+  classDef deep fill:#dbeafe,stroke:#3b82f6,stroke-width:2px;
+  class S1 deep;
+</pre>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <strong class="text-slate-700">Files</strong>
+              <ul class="mt-1 space-y-1 font-mono text-xs text-slate-600">
+                <li>apps/workers/app/core/db.py (decrypt_secret)</li>
+                <li>packages/database/src/crypto.ts</li>
+                <li>packages/database/src/local-db.ts</li>
+                <li>apps/web/src/app/api/v1/settings/route.ts</li>
+              </ul>
+            </div>
+            <div>
+              <strong class="text-slate-700">Problem</strong>
+              <p class="mt-1 text-slate-600">AES-256-GCM implementation is <strong>duplicated</strong> in Python and TypeScript. Both derive the key from <code>APP_SECRET</code> with the same insecure default. Drift risk: if one changes padding/encoding, decryption fails silently. <code>app_settings</code> table is the single source of truth but the <em>crypto</em> is not.</p>
+            </div>
+            <div>
+              <strong class="text-slate-700">Solution</strong>
+              <p class="mt-1 text-slate-600">Extract crypto to a shared module. Options: (a) compile Rust/WebAssembly and call from both; (b) publish a tiny npm package (<code>@aiva/crypto</code>) that Python calls via <code>subprocess</code> or <code>pyodide</code> (overkill); (c) move <em>all</em> settings reads/writes to a single HTTP service (FastAPI) that both sides call. Given Rule 11 (Simplicity First), (c) or a shared pure-Python/TS port is simplest.</p>
+            </div>
+          </div>
+
+          <div class="border-l-4 border-emerald-500 bg-emerald-50 p-4 text-sm">
+            <strong class="text-emerald-800">Wins</strong>
+            <ul class="mt-2 space-y-1 text-emerald-700">
+              <li>locality: encryption logic lives in one place</li>
+              <li>leverage: one test suite covers both runtimes</li>
+              <li>eliminates silent drift between Python and Node decryption</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- Candidate 3: Add ProviderCapabilities seam for endpoint feature detection -->
+        <article class="border border-slate-200 rounded-xl p-6 bg-white space-y-6">
+          <header class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold">Add ProviderCapabilities seam for endpoint feature detection</h2>
+            <span class="px-3 py-1 bg-slate-100 text-slate-600 text-sm font-medium rounded-full">Speculative</span>
+          </header>
+
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">BEFORE — Implicit capabilities, silent failures</h4>
+              <pre class="mermaid">
+flowchart TD
+  A[OpenAICompatibleProvider.generate_json] --> B{endpoint supports<br/>json_object?}
+  B -->|assumed yes| C[call with response_format]
+  C -->|fails on some endpoints| D[LLMProviderError]
+  D -->|bubbles up| E[pipeline stage crashes]
+</pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">AFTER — Explicit capability negotiation</h4>
+              <pre class="mermaid">
+flowchart TD
+  A[OpenAICompatibleProvider.init] --> B[detect_capabilities]
+  B --> C[capabilities: streaming, json_mode, structured_output, tool_calling, model_discovery]
+  C --> D[generate_json]
+  D --> E{structured_output?}
+  E -->|yes| F[JSON Schema enforcement]
+  E -->|no but json_mode?| G[json_object + post-validate]
+  E -->|no| H[prompt + retry + validate]
+</pre>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <strong class="text-slate-700">Files</strong>
+              <ul class="mt-1 space-y-1 font-mono text-xs text-slate-600">
+                <li>apps/workers/app/providers/llm/base.py (add ProviderCapabilities)</li>
+                <li>apps/workers/app/providers/llm/openai_provider.py</li>
+                <li>apps/workers/app/pipelines/stage_handlers.py (optional: pass capabilities to agents)</li>
+              </ul>
+            </div>
+            <div>
+              <strong class="text-slate-700">Problem</strong>
+              <p class="mt-1 text-slate-600">The consolidated provider <strong>assumes</strong> OpenAI-compatible endpoints support <code>json_object</code>, <code>/v1/models</code>, streaming, etc. Reality: Ollama <code>/api/generate</code> has no <code>/models</code>, no streaming via OpenAI SDK. Some local gateways lack <code>json_object</code>. Current code fails at call time with <code>LLMProviderError</code> — no graceful degradation.</p>
+            </div>
+            <div>
+              <strong class="text-slate-700">Solution</strong>
+              <p class="mt-1 text-slate-600">Add a <code>ProviderCapabilities</code> dataclass and <code>detect_capabilities()</code> that probes <code>/v1/models</code>, tries a <code>json_object</code> call, checks SSE streaming. Store caps on the provider instance. <code>generate_json</code> selects strategy at runtime. This is the <strong>adapter</strong> pattern: one interface, multiple behaviors behind the seam.</p>
+            </div>
+          </div>
+
+          <div class="border-l-4 border-emerald-500 bg-emerald-50 p-4 text-sm">
+            <strong class="text-emerald-800">Wins</strong>
+            <ul class="mt-2 space-y-1 text-emerald-700">
+              <li>locality: capability logic lives in provider, not callers</li>
+              <li>leverage: agents/agents unchanged, just get more reliable JSON</li>
+              <li>tests can inject mocked capabilities for deterministic behavior</li>
+            </ul>
+          </div>
+
+          <div class="border-l-4 border-amber-500 bg-amber-50 p-4 text-sm">
+            <strong class="text-amber-800">��� Tension with Rule 11 (Simplicity First)</strong>
+            <p class="mt-1 text-amber-700">This adds a <strong>seam</strong> (capability detection) that may be premature. The external reviewers (GPT 5.6 Luna strongly, Sonnet 5 mildly) advocate it. But current pipeline <em>already</em> works with weak JSON mode — the failure mode is parse error + retry. Only add this seam if you hit a real endpoint that breaks today. Otherwise YAGNI.</p>
+          </div>
+        </article>
+
+        <!-- Candidate 4: Move LLM networking out of Next.js into Python worker -->
+        <article class="border border-slate-200 rounded-xl p-6 bg-white space-y-6">
+          <header class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold">Move LLM networking (model discovery, test) from Next.js to Python worker</h2>
+            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm font-medium rounded-full">Worth exploring</span>
+          </header>
+
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">BEFORE — Split-brain LLM networking</h4>
+              <pre class="mermaid">
+flowchart LR
+  subgraph NextJS[Next.js API routes]
+    N1[/api/v1/settings/test-ollama] --> N2[fetch /api/tags]
+    N3[/api/v1/settings/models (proposed)] --> N4[fetch /v1/models]
+  end
+
+  subgraph Python[Python Worker]
+    P1[get_llm_provider_async] --> P2[OpenAICompatibleProvider]
+    P2 --> P3[HTTP calls to LLM endpoint]
+  end
+
+  classDef leak fill:#fee2e2,stroke:#dc2626,stroke-width:2px;
+  class N1,N3 leak;
+</pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">AFTER — Single ownership in Python worker</h4>
+              <pre class="mermaid">
+flowchart LR
+  subgraph NextJS[Next.js API routes]
+    N1[GET /api/v1/settings/models] --> N2[proxies to Python worker]
+  end
+
+  subgraph Python[Python Worker]
+    P1[Router: /llm/test, /llm/models] --> P2[OpenAICompatibleProvider]
+    P2 --> P3[HTTP calls to LLM endpoint]
+  end
+
+  classDef deep fill:#dbeafe,stroke:#3b82f6,stroke-width:2px;
+  class P1,P2 deep;
+</pre>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <strong class="text-slate-700">Files</strong>
+              <ul class="mt-1 space-y-1 font-mono text-xs text-slate-600">
+                <li>apps/web/src/app/api/v1/settings/test-ollama/route.ts (DELETE or repurpose)</li>
+                <li>apps/web/src/app/api/v1/settings/route.ts</li>
+                <li>apps/workers/app/routers/ (NEW: llm router)</li>
+                <li>apps/workers/app/providers/llm/openai_provider.py (add list_models, health_check)</li>
+              </ul>
+            </div>
+            <div>
+              <strong class="text-slate-700">Problem</strong>
+              <p class="mt-1 text-slate-600"><strong>Leakage</strong> across the Python/Node seam: Next.js makes raw HTTP calls to LLM endpoints (<code>test-ollama</code> hits <code>/api/tags</code>; the review proposes <code>/api/v1/settings/models</code> hitting <code>/v1/models</code>). This duplicates networking logic, splits error handling, and means Tauri (desktop) would need a third copy. The Python worker <em>already</em> owns the provider interface.</p>
+            </div>
+            <div>
+              <strong class="text-slate-700">Solution</strong>
+              <p class="mt-1 text-slate-600">Add FastAPI routes in the Python worker: <code>GET /llm/models</code>, <code>POST /llm/test</code>. Next.js proxies to them. The <code>OpenAICompatibleProvider</code> gets <code>list_models()</code> and <code>health_check()</code> methods. Single networking stack, single error taxonomy, Tauri reuses Python worker.</p>
+            </div>
+          </div>
+
+          <div class="border-l-4 border-emerald-500 bg-emerald-50 p-4 text-sm">
+            <strong class="text-emerald-800">Wins</strong>
+            <ul class="mt-2 space-y-1 text-emerald-700">
+              <li>locality: all LLM HTTP logic in one module (the provider)</li>
+              <li>leverage: one <code>health_check</code>, one <code>list_models</code> implementation</li>
+              <ui>eliminates Tauri networking duplication before it exists</ui>
+            </ul>
+          </div>
+        </article>
+
+        <!-- Candidate 5: Delete dead provider stubs (brave, sdxl_local, coqui, mock_tts) -->
+        <article class="border border-slate-200 rounded-xl p-6 bg-white space-y-6">
+          <header class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-xl font-semibold">Delete dead provider stubs across non-LLM modalities</h2>
+            <span class="px-3 py-1 bg-amber-100 text-amber-800 text-sm font-medium rounded-full">Worth exploring</span>
+          </header>
+
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">BEFORE — Dead code inflates the provider surface</h4>
+              <pre class="mermaid">
+flowchart LR
+  Factory[provider factory] --> LLM[llm: 4 real]
+  Factory --> Search[search: 1 real + brave (dead)]
+  Factory --> TTS[tts: 2 real + coqui (dead) + mock (dead)]
+  Factory --> Stock[stock: 1 real]
+  Factory --> Image[image: 1 real + sdxl_local (dead)]
+
+  classDef dead fill:#fecaca,stroke:#dc2626,stroke-width:2px;
+  class Search,TTS,Image dead;
+</pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h4 class="text-sm font-medium text-slate-600 mb-3">AFTER — Only real implementations remain</h4>
+              <pre class="mermaid">
+flowchart LR
+  Factory[provider factory] --> LLM[llm: 1 deep (OpenAICompatible)]
+  Factory --> Search[search: TavilyProvider]
+  Factory --> TTS[tts: EdgeTTSProvider, KokoroProvider]
+  Factory --> Stock[stock: PexelsProvider]
+  Factory --> Image[image: CloudflareImageProvider]
+
+  classDef clean fill:#dcfce7,stroke:#16a34a,stroke-width:2px;
+  class LLM,Search,TTS,Stock,Image clean;
+</pre>
+            </div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <strong class="text-slate-700">Files</strong>
+              <ul class="mt-1 space-y-1 font-mono text-xs text-slate-600">
+                <li>DELETE: apps/workers/app/providers/search/brave_provider.py</li>
+                <li>DELETE: apps/workers/app/providers/tts/coqui_provider.py</li>
+                <li>DELETE: apps/workers/app/providers/tts/mock_provider.py</li>
+                <li>DELETE: apps/workers/app/providers/image/sdxl_local_provider.py</li>
+                <li>apps/workers/app/providers/factory.py (remove dead imports/branches)</li>
+              </ul>
+            </div>
+            <div>
+              <strong class="text-slate-700">Problem</strong>
+              <p class="mt-1 text-slate-600">Four provider files exist on disk but are <strong>never instantiated by the factory</strong>. They inflate the module surface, confuse AI navigation, and violate Rule 13 (Dependencies Must Justify Their Existence). The <em>deletion test</em> applies: deleting them concentrates zero complexity — they're already dead.</p>
+            </div>
+            <div>
+              <strong class="text-slate-700">Solution</strong>
+              <p class="mt-1 text-slate-600">Delete the four files. Remove their imports from <code>factory.py</code> (they're already not called, but imports may exist). Keep <code>MockLLMProvider</code> — it's the <strong>test seam</strong> for CI/golden suite (two adapters = real seam).</p>
+            </div>
+          </div>
+
+          <div class="border-l-4 border-emerald-500 bg-emerald-50 p-4 text-sm">
+            <strong class="text-emerald-800">Wins</strong>
+            <ul class="mt-2 space-y-1 text-emerald-700">
+              <li>locality: provider directory shows only what's real</li>
+              <li>AI navigability: no phantom modules to hallucinate about</li>
+              <li>Rule 11/13 compliance: zero dead dependencies</li>
+            </ul>
+          </div>
+        </article>
+
+      </section>
+
+      <section id="top-recommendation" class="border-t border-slate-200 pt-8">
+        <div class="bg-slate-900 text-slate-100 rounded-xl p-8">
+          <h2 class="text-2xl font-bold mb-4">Top Recommendation</h2>
+          <p class="text-lg mb-4"><strong>Candidate 1 — Collapse LLM provider factory to OpenAI-compatible provider.</strong></p>
+          <p class="text-slate-300 mb-4">This is the only candidate that passes the <strong>deletion test</strong> with a clear "yes, concentrates": the four LLM wrappers are shallow (interface ≈ implementation), share identical semantics, and the <code>ILLMProvider</code> seam is already the test surface (<code>MockLLMProvider</code> exists). Consolidating deletes 3 SDK dependencies, removes the factory switch, adds streaming, and enables OmniRoute/Ollama/OpenRouter without code changes.</p>
+          <p class="text-slate-300 mb-4">Do <strong>Candidate 5 (delete dead stubs)</strong> in the same PR — zero risk, immediate cleanup.</p>
+          <p class="text-slate-300 mb-4">Defer <strong>Candidate 3 (ProviderCapabilities)</strong> until a real endpoint breaks. The current weak-JSON-mode + retry works for the pipeline's two <code>generate_json</code> call sites (outline, script-director). Premature capability negotiation adds a seam without load-bearing justification.</p>
+          <p class="text-slate-300 mb-4"><strong>Candidate 2 (unify crypto)</strong> and <strong>Candidate 4 (move LLM networking to Python)</strong> are solid deepening moves but orthogonal to the LLM consolidation. Tackle them after Candidate 1 ships and you have a stable <code>OpenAICompatibleProvider</code> to build on.</p>
+          <div class="mt-6 p-4 bg-slate-800 rounded-lg">
+            <p class="font-mono text-sm">Next step: run <code>/grilling</code> on Candidate 1 to lock the interface shape, capability handling, migration phases, and CONTEXT.md updates.</p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </body>
+</html>

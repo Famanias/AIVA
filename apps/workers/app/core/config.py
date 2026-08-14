@@ -40,7 +40,12 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # LLM Provider
     # -------------------------------------------------------------------------
-    llm_provider: Literal["gemini", "groq", "openrouter"] = "gemini"
+    llm_provider: str = "openai_compatible"
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_api_key: str = ""
+    llm_model: str = "google/gemini-flash-1.5"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-1.5-flash"
     groq_api_key: str = ""
