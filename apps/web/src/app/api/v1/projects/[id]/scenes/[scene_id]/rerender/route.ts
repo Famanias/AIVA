@@ -41,9 +41,9 @@ export async function POST(
 
     // Dispatch worker scene re-render request
     const workerUrl = process.env.WORKER_API_URL || "http://localhost:8000";
-    let workerData: any = null;
+    let workerRes: Response;
     try {
-      const workerRes = await fetch(`${workerUrl}/pipeline/rerender_scene`, {
+      workerRes = await fetch(`${workerUrl}/pipeline/rerender_scene`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -53,14 +53,30 @@ export async function POST(
           revision: 1,
         }),
       });
-      if (workerRes.ok) {
-        workerData = await workerRes.json();
-      } else {
-        console.warn(`[Rerender Route] Worker returned HTTP ${workerRes.status}`);
-      }
     } catch (err: any) {
-      console.warn("[Rerender Route] Warning: Worker invocation failed:", err.message);
+      console.error("[Rerender Route] Worker connection error:", err.message);
+      return NextResponse.json(
+        {
+          status: "error",
+          error: `Worker service unreachable at ${workerUrl}: ${err.message}`,
+        },
+        { status: 502 }
+      );
     }
+
+    if (!workerRes.ok) {
+      const errorText = await workerRes.text().catch(() => "");
+      console.error(`[Rerender Route] Worker returned HTTP ${workerRes.status}: ${errorText}`);
+      return NextResponse.json(
+        {
+          status: "error",
+          error: `Worker failed with status ${workerRes.status}: ${errorText}`,
+        },
+        { status: workerRes.status >= 500 ? 502 : workerRes.status }
+      );
+    }
+
+    const workerData = await workerRes.json().catch(() => ({}));
 
     return NextResponse.json({
       status: "success",

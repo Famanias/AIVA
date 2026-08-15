@@ -123,6 +123,12 @@ async def handle_script_direction_stage(
     else:
         outline_text = f"TOPIC: {topic}"
 
+    # Derive duration target if present in generation_profile
+    if generation_profile:
+        target_sec = generation_profile.get("duration_target_seconds") or generation_profile.get("target_duration_seconds")
+        if target_sec:
+            duration_target_minutes = max(1, round(float(target_sec) / 60.0))
+
     output: ScriptDirectorOutput = await agent.run(
         topic=topic,
         video_style=video_style,
@@ -179,46 +185,18 @@ async def handle_voiceover_stage(
     master_audio_url = None
     if outputs:
         from app.core.storage import get_project_storage_dir
+        from app.core.audio_utils import concat_audio_files
         valid_project_id = project_id or job_id
         project_storage_dir = get_project_storage_dir(valid_project_id)
         master_voice_file = os.path.join(project_storage_dir, "master_voice.mp3")
 
-        if len(outputs) == 1:
-            try:
-                shutil.copy2(outputs[0].audio_url, master_voice_file)
-                master_audio_url = master_voice_file
-            except Exception as e:
-                logger.warning("failed_to_copy_single_voice_to_master", error=str(e))
-                master_audio_url = outputs[0].audio_url
-        else:
-            ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
-            concat_list_file = os.path.join(project_storage_dir, "voice_concat.txt")
-            try:
-                with open(concat_list_file, "w", encoding="utf-8") as f:
-                    for o in outputs:
-                        safe_path = o.audio_url.replace("\\", "/")
-                        f.write(f"file '{safe_path}'\n")
-                
-                res = subprocess.run(
-                    [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c", "copy", master_voice_file],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-                if res.returncode != 0:
-                    subprocess.run(
-                        [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c:a", "libmp3lame", master_voice_file],
-                        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                    )
-                master_audio_url = master_voice_file
-                logger.info("master_voice_concatenated", master_path=master_voice_file, scenes_count=len(outputs))
-            except Exception as e:
-                logger.warning("failed_to_concatenate_master_voice", error=str(e))
-                master_audio_url = outputs[0].audio_url
-            finally:
-                if os.path.exists(concat_list_file):
-                    try:
-                        os.remove(concat_list_file)
-                    except Exception:
-                        pass
+        try:
+            audio_files = [o.audio_url for o in outputs if o.audio_url]
+            master_audio_url = concat_audio_files(audio_files, master_voice_file)
+            logger.info("master_voice_concatenated", master_path=master_audio_url, scenes_count=len(outputs))
+        except Exception as e:
+            logger.warning("failed_to_concatenate_master_voice", error=str(e))
+            master_audio_url = outputs[0].audio_url
 
     result = {
         "master_audio_url": master_audio_url,

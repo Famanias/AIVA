@@ -90,7 +90,11 @@ def build_outline_prompt(
     duration_target_minutes: int = 1,
 ) -> RenderedPrompt:
     profile = generation_profile or _SHORT_FORM_DEFAULT
-    target_seconds: int = profile.get("target_duration_seconds", duration_target_minutes * 60)
+    target_seconds: int = (
+        profile.get("duration_target_seconds")
+        or profile.get("target_duration_seconds")
+        or (duration_target_minutes * 60)
+    )
     pacing: dict = profile.get("pacing", _SHORT_FORM_DEFAULT["pacing"])
     words_per_minute: int = pacing.get("words_per_minute", 150)
     hook_within: int = pacing.get("hook_within_seconds", 3)
@@ -158,7 +162,11 @@ def build_script_director_prompt(
     approx_word_count: int | None = None,
 ) -> RenderedPrompt:
     profile = generation_profile or _SHORT_FORM_DEFAULT
-    target_seconds: int = profile.get("target_duration_seconds", duration_target_minutes * 60)
+    target_seconds: int = (
+        profile.get("duration_target_seconds")
+        or profile.get("target_duration_seconds")
+        or (duration_target_minutes * 60)
+    )
     pacing: dict = profile.get("pacing", _SHORT_FORM_DEFAULT["pacing"])
     words_per_minute: int = pacing.get("words_per_minute", 150)
     min_cut, max_cut = pacing.get("visual_cut_interval_seconds", [2, 6])

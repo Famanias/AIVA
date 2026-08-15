@@ -40,9 +40,51 @@ export async function GET(
   const range = request.headers.get("range");
 
   if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+    if (stat.size === 0) {
+      return new NextResponse(null, {
+        status: 416,
+        headers: { "Content-Range": "bytes */0" },
+      });
+    }
+
+    const match = range.trim().match(/^bytes=(\d*)-(\d*)$/);
+    if (!match) {
+      return new NextResponse(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${stat.size}` },
+      });
+    }
+
+    const [, startStr, endStr] = match;
+    let start: number;
+    let end: number;
+
+    if (startStr === "" && endStr !== "") {
+      // Suffix range: bytes=-500 (last 500 bytes)
+      const suffix = parseInt(endStr, 10);
+      if (isNaN(suffix) || suffix <= 0) {
+        return new NextResponse(null, {
+          status: 416,
+          headers: { "Content-Range": `bytes */${stat.size}` },
+        });
+      }
+      start = Math.max(0, stat.size - suffix);
+      end = stat.size - 1;
+    } else if (startStr !== "" && endStr === "") {
+      // Open-ended range: bytes=100-
+      start = parseInt(startStr, 10);
+      end = stat.size - 1;
+    } else if (startStr !== "" && endStr !== "") {
+      // Explicit range: bytes=100-200
+      start = parseInt(startStr, 10);
+      end = parseInt(endStr, 10);
+    } else {
+      // Invalid: bytes=-
+      return new NextResponse(null, {
+        status: 416,
+        headers: { "Content-Range": `bytes */${stat.size}` },
+      });
+    }
 
     if (isNaN(start) || isNaN(end) || start < 0 || start >= stat.size || end >= stat.size || start > end) {
       return new NextResponse(null, {
@@ -55,15 +97,7 @@ export async function GET(
 
     const chunksize = end - start + 1;
     const fileStream = fs.createReadStream(filePath, { start, end });
-
-    // Stream range response (206 Partial Content)
-    const stream = new ReadableStream({
-      start(controller) {
-        fileStream.on("data", (chunk) => controller.enqueue(chunk));
-        fileStream.on("end", () => controller.close());
-        fileStream.on("error", (err) => controller.error(err));
-      },
-    });
+    const stream = nodeStreamToReadable(fileStream);
 
     return new NextResponse(stream, {
       status: 206,
@@ -79,17 +113,12 @@ export async function GET(
   // Full file response (200 OK)
   const isDownload = request.nextUrl.searchParams.get("download") === "true";
   const fileStream = fs.createReadStream(filePath);
-  const stream = new ReadableStream({
-    start(controller) {
-      fileStream.on("data", (chunk) => controller.enqueue(chunk));
-      fileStream.on("end", () => controller.close());
-      fileStream.on("error", (err) => controller.error(err));
-    },
-  });
+  const stream = nodeStreamToReadable(fileStream);
 
   const headers: Record<string, string> = {
     "Content-Length": stat.size.toString(),
     "Content-Type": contentType,
+    "Accept-Ranges": "bytes",
   };
 
   if (isDownload) {
@@ -100,5 +129,15 @@ export async function GET(
   return new NextResponse(stream, {
     status: 200,
     headers,
+  });
+}
+
+function nodeStreamToReadable(fileStream: fs.ReadStream): ReadableStream {
+  return new ReadableStream({
+    start(controller) {
+      fileStream.on("data", (chunk) => controller.enqueue(chunk));
+      fileStream.on("end", () => controller.close());
+      fileStream.on("error", (err) => controller.error(err));
+    },
   });
 }

@@ -3,7 +3,10 @@ import time
 import json
 import subprocess
 from typing import List
+import structlog
 from app.models.composition import CompositionModel, MediaReference
+
+logger = structlog.get_logger(__name__)
 
 class Encoder:
     """
@@ -36,7 +39,7 @@ class Encoder:
                 vcodec = "h264_nvenc"
             except:
                 vcodec = "libx264"
-                print("[Encoder] NVENC unavailable, falling back to libx264")
+                logger.info("nvenc_unavailable_fallback", msg="NVENC unavailable, falling back to libx264")
 
         import shutil
         ffmpeg_bin = shutil.which("ffmpeg")
@@ -98,24 +101,24 @@ class Encoder:
         cmd.append(output_path)
         
         # Execute
-        print(f"[Encoder] Executing FFmpeg command:\n{' '.join(cmd)}")
+        logger.info("ffmpeg_execution_start", command=" ".join(cmd), job_id=model.job_id)
         
         try:
             # We capture stderr because ffmpeg logs output to stderr
             result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         except subprocess.CalledProcessError as e:
             if vcodec == "h264_nvenc":
-                print("[Encoder] NVENC encoding failed, retrying with CPU libx264...")
+                logger.warning("nvenc_encoding_failed_retry_cpu", error=str(e), job_id=model.job_id)
                 for i, arg in enumerate(cmd):
                     if arg == "-c:v" and i + 1 < len(cmd):
                         cmd[i + 1] = "libx264"
                 try:
                     result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 except subprocess.CalledProcessError as err2:
-                    print(f"[Encoder] FFmpeg CPU fallback Failed. Stderr:\n{err2.stderr}")
+                    logger.error("ffmpeg_cpu_fallback_failed", stderr=err2.stderr, job_id=model.job_id)
                     raise RuntimeError(f"FFmpeg encoding failed: {err2}")
             else:
-                print(f"[Encoder] FFmpeg Failed. Stderr:\n{e.stderr}")
+                logger.error("ffmpeg_failed", stderr=e.stderr, job_id=model.job_id)
                 raise RuntimeError(f"FFmpeg encoding failed: {e}")
 
         # Emit Manifest
@@ -130,10 +133,10 @@ class Encoder:
         manifest = {
             "job_id": model.job_id,
             "inputs": {
-                "background_tracks": [t.dict() for t in model.background_tracks],
-                "overlay_track": model.overlay_track.dict() if model.overlay_track else None,
-                "voice_track": model.voice_track.dict() if model.voice_track else None,
-                "music_track": model.music_track.dict() if model.music_track else None,
+                "background_tracks": [t.model_dump() if hasattr(t, "model_dump") else t.dict() for t in model.background_tracks],
+                "overlay_track": (model.overlay_track.model_dump() if hasattr(model.overlay_track, "model_dump") else model.overlay_track.dict()) if model.overlay_track else None,
+                "voice_track": (model.voice_track.model_dump() if hasattr(model.voice_track, "model_dump") else model.voice_track.dict()) if model.voice_track else None,
+                "music_track": (model.music_track.model_dump() if hasattr(model.music_track, "model_dump") else model.music_track.dict()) if model.music_track else None,
                 "word_timings_count": len(model.word_timings)
             },
             "output": {
@@ -149,4 +152,4 @@ class Encoder:
         with open(manifest_path, "w") as f:
             json.dump(manifest, f, indent=2)
             
-        print(f"[Encoder] Manifest written to {manifest_path}")
+        logger.info("manifest_persisted", path=manifest_path, job_id=model.job_id)

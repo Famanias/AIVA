@@ -50,6 +50,26 @@ async def get_llm_provider_async() -> ILLMProvider:
             logger.warning("deprecated_llm_keys", msg="Migrate to llm_base_url/llm_api_key/llm_model")
             return legacy
 
+        # Auto-fallback to local Ollama if no API key is provided
+        from app.providers.llm.ollama_provider import OllamaProvider
+        ollama_url = (
+            (await get_app_setting("ollama_base_url"))
+            or (await get_app_setting("llm_base_url"))
+            or "http://localhost:11434"
+        )
+        ollama_model = (
+            (await get_app_setting("ollama_model"))
+            or (await get_app_setting("llm_model"))
+            or "llama3.2"
+        )
+        logger.warning(
+            "llm_no_api_key_falling_back_to_ollama",
+            msg="No LLM API key configured; falling back to local Ollama instance.",
+            base_url=ollama_url,
+            model=ollama_model,
+        )
+        return OllamaProvider(base_url=ollama_url, model=ollama_model)
+
     logger.info("llm_provider_loaded", provider="openai_compatible", base_url=base_url, model=model)
     return OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model)
 
@@ -86,56 +106,16 @@ async def _legacy_llm_config(provider_name: str) -> ILLMProvider | None:
                 api_key=key,
                 model=model,
             )
+    elif provider_name not in ("openai_compatible", "ollama"):
+        logger.warning("unknown_llm_provider_fallback", provider=provider_name)
+
     return None
-
-
-@lru_cache
-def get_llm_provider() -> ILLMProvider:
-    """Sync fallback for legacy callers."""
-    settings = get_settings()
-    if settings.llm_provider == "ollama":
-        from app.providers.llm.ollama_provider import OllamaProvider
-        return OllamaProvider(base_url=settings.ollama_base_url, model=settings.ollama_model)
-
-    from app.providers.llm.openai_compatible_provider import OpenAICompatibleProvider
-    base_url = getattr(settings, "llm_base_url", "https://openrouter.ai/api/v1")
-    api_key = getattr(settings, "llm_api_key", "")
-    model = getattr(settings, "llm_model", "google/gemini-flash-1.5")
-
-    if not api_key:
-        if settings.llm_provider == "groq" and settings.groq_api_key:
-            return OpenAICompatibleProvider(
-                base_url="https://api.groq.com/openai/v1",
-                api_key=settings.groq_api_key,
-                model=settings.groq_model,
-            )
-        if settings.llm_provider == "openrouter" and settings.openrouter_api_key:
-            return OpenAICompatibleProvider(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=settings.openrouter_api_key,
-                model=settings.openrouter_model,
-            )
-        if settings.gemini_api_key:
-            return OpenAICompatibleProvider(
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                api_key=settings.gemini_api_key,
-                model=settings.gemini_model,
-            )
-
-    return OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model)
 
 
 async def get_search_provider_async() -> ISearchProvider:
     api_key = (await get_app_setting("tavily_api_key")) or ""
     from app.providers.search.tavily_provider import TavilyProvider
     return TavilyProvider(api_key=api_key)
-
-
-@lru_cache
-def get_search_provider() -> ISearchProvider:
-    settings = get_settings()
-    from app.providers.search.tavily_provider import TavilyProvider
-    return TavilyProvider(api_key=settings.tavily_api_key)
 
 
 async def get_tts_provider_async() -> ITTSProvider:
@@ -153,23 +133,10 @@ async def get_tts_provider_async() -> ITTSProvider:
     return EdgeTTSProvider()
 
 
-@lru_cache
-def get_tts_provider() -> ITTSProvider:
-    from app.providers.tts.edge_tts_provider import EdgeTTSProvider
-    return EdgeTTSProvider()
-
-
 async def get_stock_provider_async() -> IStockProvider:
     api_key = (await get_app_setting("pexels_api_key")) or ""
     from app.providers.stock.pexels_provider import PexelsProvider
     return PexelsProvider(api_key=api_key)
-
-
-@lru_cache
-def get_stock_provider() -> IStockProvider:
-    settings = get_settings()
-    from app.providers.stock.pexels_provider import PexelsProvider
-    return PexelsProvider(api_key=settings.pexels_api_key)
 
 
 async def get_image_provider_async() -> IImageProvider:
@@ -178,12 +145,3 @@ async def get_image_provider_async() -> IImageProvider:
     from app.providers.image.cloudflare_provider import CloudflareImageProvider
     return CloudflareImageProvider(account_id=account_id, token=token)
 
-
-@lru_cache
-def get_image_provider() -> IImageProvider:
-    settings = get_settings()
-    from app.providers.image.cloudflare_provider import CloudflareImageProvider
-    return CloudflareImageProvider(
-        account_id=settings.cloudflare_account_id,
-        token=settings.cloudflare_workers_ai_token,
-    )

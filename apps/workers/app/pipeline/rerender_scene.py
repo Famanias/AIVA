@@ -7,6 +7,8 @@ from typing import Dict, Any, Optional
 from app.core.db import get_db_pool
 from app.pipeline.checkpoint import get_checkpoint_dir
 from app.providers.factory import get_tts_provider_async
+from app.core.audio_utils import concat_audio_files
+from app.core.storage import get_project_storage_dir
 from app.models.composition import (
     CompositionModel,
     MediaReference,
@@ -26,19 +28,20 @@ async def rerender_single_scene(
     Executes single-scene partial re-rendering:
     1. Reads scene and scene_version details from PostgreSQL.
     2. Re-synthesizes the scene's voiceover via TTS and extracts word timings.
-    3. Updates database public.scenes with new voiceover and word timings.
-    4. Updates checkpoints (03_script, 04_voice).
-    5. Re-stitches final composition reusing unchanged cached scene clips.
-    6. Updates database scene status to 'rendered'.
+    3. Re-renders the scene's visual overlay with template-renderer.
+    4. Updates database public.scenes with new voiceover, render_url, and word timings.
+    5. Updates checkpoints (03_script, 04_voice).
+    6. Re-stitches final composition reusing unchanged cached scene clips.
+    7. Updates database scene status to 'rendered'.
     """
-    logger.info("[Single Scene Rerender START]", project_id=project_id, scene_id=scene_id)
+    logger.info("single_scene_rerender_start", project_id=project_id, scene_id=scene_id)
     
     import uuid
     try:
         valid_scene_uuid = str(uuid.UUID(scene_id))
         valid_project_uuid = str(uuid.UUID(project_id))
     except ValueError:
-        logger.warning("Invalid UUID format provided for rerendering", scene_id=scene_id, project_id=project_id)
+        logger.warning("invalid_uuid_format", scene_id=scene_id, project_id=project_id)
         return {
             "status": "not_found",
             "project_id": project_id,
@@ -63,7 +66,7 @@ async def rerender_single_scene(
         )
 
         if not scene_row:
-            logger.warning("Scene not found for rerendering", scene_id=scene_id, project_id=project_id)
+            logger.warning("scene_not_found_for_rerendering", scene_id=scene_id, project_id=project_id)
             return {
                 "status": "not_found",
                 "project_id": project_id,
@@ -87,8 +90,12 @@ async def rerender_single_scene(
         aspect_ratio = "9:16"
         width = 1080
         height = 1920
+        video_style = "stickman"
 
         if proj_row is not None:
+            raw_style = proj_row.get("video_style") or "stickman"
+            video_style = "stickman" if raw_style == "stickman_animation" else raw_style
+
             try:
                 state_raw = proj_row["state_payload"] if "state_payload" in proj_row else None
                 if state_raw:
@@ -96,13 +103,19 @@ async def rerender_single_scene(
                     gen_profile = payload.get("generationProfile", {}) or {}
                     voice_id = gen_profile.get("voice_id") or payload.get("voice_id") or voice_id
                     aspect_ratio = gen_profile.get("aspect_ratio") or payload.get("aspect_ratio") or aspect_ratio
+
+                    canvas_cfg = gen_profile.get("canvasConfig") or gen_profile.get("canvas_config") or payload.get("canvasConfig") or {}
+                    if canvas_cfg.get("width"):
+                        width = int(canvas_cfg["width"])
+                    if canvas_cfg.get("height"):
+                        height = int(canvas_cfg["height"])
             except Exception:
                 pass
 
         if aspect_ratio == "16:9":
-            width, height = 1920, 1080
+            width, height = (1920, 1080) if width == 1080 and height == 1920 else (width, height)
         elif aspect_ratio == "1:1":
-            width, height = 1080, 1080
+            width, height = (1080, 1080) if width == 1080 and height == 1920 else (width, height)
 
         # 2. Re-synthesize TTS for the modified scene
         tts = await get_tts_provider_async()
@@ -122,14 +135,59 @@ async def rerender_single_scene(
                     for w in tts_res.word_timings
                 ]
                 logger.info(
-                    "Re-synthesized TTS for scene",
+                    "resynthesized_tts_for_scene",
                     scene_id=scene_id,
                     duration=new_duration,
                     words=len(new_word_timings),
                     voice_id=voice_id
                 )
             except Exception as e:
-                logger.warning("TTS re-synthesis error, falling back to existing audio", error=str(e))
+                logger.warning("tts_resynthesis_error_fallback", error=str(e))
+
+        # 2b. Re-render visual overlay for the modified scene via Template Renderer
+        new_render_url = scene_row.get("render_url") if hasattr(scene_row, "get") else (scene_row["render_url"] if "render_url" in scene_row else None)
+        template_renderer_url = os.getenv("TEMPLATE_RENDERER_URL", "http://localhost:3001")
+        try:
+            import httpx
+            scene_ir = {
+                "version": 1,
+                "templateFamily": video_style,
+                "metadata": {
+                    "projectId": project_id,
+                    "jobId": f"rerender_{project_id}_{scene_row['sequence_number']}",
+                    "topic": "Scene Rerender",
+                    "canvasConfig": {
+                        "width": width,
+                        "height": height,
+                        "aspectRatio": aspect_ratio,
+                        "fps": 30,
+                    },
+                },
+                "voice": {
+                    "wordTimings": new_word_timings,
+                    "audioUrl": new_voice_url or "",
+                },
+                "scenes": [
+                    {
+                        "id": str(scene_row["sequence_number"]),
+                        "text": script_text,
+                        "visual_type": scene_row["visual_type"] or "stickman_action",
+                        "action": "standing",
+                        "transition": "fade",
+                        "assetUrl": None,
+                    }
+                ],
+            }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                res = await client.post(f"{template_renderer_url}/render", json=scene_ir)
+                if res.status_code == 200:
+                    render_data = res.json()
+                    new_render_url = render_data.get("result", {}).get("outputs", {}).get("video", new_render_url)
+                    logger.info("visual_scene_rerender_success", scene_id=scene_id, render_url=new_render_url)
+                else:
+                    logger.warning("visual_scene_rerender_non_200", status=res.status_code, body=res.text)
+        except Exception as render_err:
+            logger.warning("visual_scene_rerender_failed", error=str(render_err))
 
         # 3. Update scene record in PostgreSQL
         await conn.execute(
@@ -138,12 +196,14 @@ async def rerender_single_scene(
             SET voiceover_url = $1,
                 duration = $2,
                 voiceover_word_timings = $3,
+                render_url = $4,
                 render_status = 'rendered'
-            WHERE id = $4 AND project_id = $5
+            WHERE id = $5 AND project_id = $6
             """,
             new_voice_url,
             new_duration,
             json.dumps(new_word_timings) if new_word_timings else None,
+            new_render_url,
             valid_scene_uuid,
             valid_project_uuid
         )
@@ -167,7 +227,7 @@ async def rerender_single_scene(
                 with open(script_cp_file, "w", encoding="utf-8") as f:
                     json.dump(script_data, f, indent=2, ensure_ascii=False)
             except Exception as err:
-                logger.warning("Could not update script checkpoint file", error=str(err))
+                logger.warning("could_not_update_script_checkpoint", error=str(err))
 
         # Update 04_voice checkpoint
         voice_cp_file = os.path.join(checkpoint_dir, "checkpoint_04_voice.json")
@@ -194,7 +254,7 @@ async def rerender_single_scene(
                 with open(voice_cp_file, "w", encoding="utf-8") as f:
                     json.dump(voice_data, f, indent=2, ensure_ascii=False)
             except Exception as err:
-                logger.warning("Could not update voice checkpoint file", error=str(err))
+                logger.warning("could_not_update_voice_checkpoint", error=str(err))
 
         # 5. Fetch all project scenes to re-stitch composition
         all_scenes = await conn.fetch(
@@ -271,62 +331,30 @@ async def rerender_single_scene(
         if overlay_track:
             overlay_track.duration = cumulative_time
 
-        # Concatenate scene voices if available
-        from app.core.storage import get_project_storage_dir
+        # Concatenate scene voices using shared audio_utils helper
         project_storage_dir = get_project_storage_dir(project_id)
-
-        master_voice_file = os.path.join(project_storage_dir, "voice_track.mp3")
-        ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+        master_voice_file = os.path.join(project_storage_dir, "master_voice.mp3")
 
         voice_track = None
-        if len(scene_voice_files) == 1:
-            voice_track = MediaReference(
-                id="voice_main",
-                type="audio",
-                storage_key=scene_voice_files[0],
-                duration=cumulative_time,
-                mime_type="audio/mp3"
-            )
-        elif len(scene_voice_files) > 1:
+        if scene_voice_files:
             try:
-                concat_list_file = os.path.join(project_storage_dir, "voice_concat.txt")
-                with open(concat_list_file, "w", encoding="utf-8") as f:
-                    for vf in scene_voice_files:
-                        safe_vf = vf.replace('\\', '/')
-                        f.write(f"file '{safe_vf}'\n")
-                
-                res = subprocess.run(
-                    [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c", "copy", master_voice_file],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                )
-                if res.returncode != 0:
-                    subprocess.run(
-                        [ffmpeg_bin, "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file, "-c:a", "libmp3lame", master_voice_file],
-                        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                    )
+                master_audio_path = concat_audio_files(scene_voice_files, master_voice_file)
                 voice_track = MediaReference(
                     id="voice_main",
                     type="audio",
-                    storage_key=master_voice_file,
+                    storage_key=master_audio_path,
                     duration=cumulative_time,
                     mime_type="audio/mp3"
                 )
             except Exception as concat_err:
-                logger.warning("Voice concatenation failed, using primary voice file", error=str(concat_err))
-                if scene_voice_files:
-                    voice_track = MediaReference(
-                        id="voice_main",
-                        type="audio",
-                        storage_key=scene_voice_files[0],
-                        duration=cumulative_time,
-                        mime_type="audio/mp3"
-                    )
-            finally:
-                if os.path.exists(concat_list_file):
-                    try:
-                        os.remove(concat_list_file)
-                    except Exception:
-                        pass
+                logger.warning("voice_concatenation_failed_using_primary", error=str(concat_err))
+                voice_track = MediaReference(
+                    id="voice_main",
+                    type="audio",
+                    storage_key=scene_voice_files[0],
+                    duration=cumulative_time,
+                    mime_type="audio/mp3"
+                )
 
         # Background music
         music_file = "storage/audio/ambient_track.mp3"
@@ -339,6 +367,7 @@ async def rerender_single_scene(
         )
 
         # Re-stitch master video via CompositionEngine
+        ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
         try:
             valid_bg_tracks = [t for t in bg_tracks if os.path.exists(t.storage_key) and not t.storage_key.endswith('.mp3')]
             
@@ -382,17 +411,18 @@ async def rerender_single_scene(
                     metadata={"project_id": project_id}
                 )
                 comp_res = CompositionEngine.run(comp_model)
-                logger.info("Re-stitched master composition successfully", output_path=comp_res.output_reference.storage_key)
+                logger.info("restitched_master_composition_success", output_path=comp_res.output_reference.storage_key)
         except Exception as comp_err:
-            logger.warning("Composition re-stitching skipped or non-fatal", error=str(comp_err))
+            logger.warning("composition_restitching_skipped", error=str(comp_err))
 
-    logger.info("[Single Scene Rerender COMPLETE]", scene_id=scene_id, project_id=project_id)
+    logger.info("single_scene_rerender_complete", scene_id=scene_id, project_id=project_id)
     return {
         "status": "success",
         "project_id": project_id,
         "scene_id": scene_id,
         "sequence_number": scene_row["sequence_number"],
         "voiceover_url": new_voice_url,
+        "render_url": new_render_url,
         "duration": new_duration,
         "message": "Single scene partial re-rendering and master composition finished successfully"
     }

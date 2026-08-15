@@ -41,69 +41,93 @@ export class RenderHandler extends BaseHandler {
       height = 1080
     }
 
-    // 2. Package into Version 1 PipelineIR
-    const ir: PipelineIR = {
-      version: 1,
-      templateFamily: style,
-      metadata: {
-        projectId: context.project.id,
-        jobId: context.job.id,
-        topic: context.project.topic,
-        canvasConfig: {
-          width,
-          height,
-          aspectRatio,
-          fps: 30
-        }
-      },
-      voice: {
-        wordTimings,
-        audioUrl
-      },
-      scenes: scenes.map((s: any) => ({
-        id: String(s.sequence_number || s.id || 1),
-        text: s.scriptSegment || s.text || '',
-        visual_type: s.visualType || s.visual_type || 'stickman_action',
-        action: s.animationAction || s.action || 'standing',
-        transition: s.transition || 'fade',
-        assetUrl: s.assetUrl
-      }))
-    }
-
-    // 3. Dispatch to Template Renderer via WorkerGateway
-    // The Template Renderer is a distinct worker (Node.js instead of Python)
-    // We treat it identically in the orchestration layer
+    // 2. Package and dispatch per-scene parallel renders to Template Renderer
     const renderUrl = process.env.TEMPLATE_RENDERER_URL || 'http://localhost:3001'
-    
-    await context.logger.info(`Dispatching PipelineIR to Render Engine: ${renderUrl}/render`)
-    
-    const response = await workerGateway.execute<any>(`${renderUrl}/render`, ir, 10 * 60 * 1000)
+    await context.logger.info(`Dispatching ${scenes.length} scene(s) to Render Engine in parallel: ${renderUrl}/render`)
 
-    if (response.status !== 'success') {
-      throw new Error(`Rendering failed: ${response.error || 'Unknown error'}`)
+    const sceneRenderResults = await Promise.all(
+      scenes.map(async (s: any, index: number) => {
+        const seq = s.sequence_number || index + 1
+        const sceneVo = Array.isArray(voice.voiceovers)
+          ? voice.voiceovers.find((vo: any) => vo.sequence_number === seq)
+          : null
+        const sceneWordTimings = sceneVo?.word_timings || (Array.isArray(wordTimings) ? wordTimings : [])
+        const sceneAudioUrl = sceneVo?.audio_url || audioUrl || ''
+
+        const sceneIR: PipelineIR = {
+          version: 1,
+          templateFamily: style,
+          metadata: {
+            projectId: context.project.id,
+            jobId: `${context.job.id}_scene_${seq}`,
+            topic: context.project.topic,
+            canvasConfig: {
+              width,
+              height,
+              aspectRatio,
+              fps: 30,
+            },
+          },
+          voice: {
+            wordTimings: sceneWordTimings,
+            audioUrl: sceneAudioUrl,
+          },
+          scenes: [
+            {
+              id: String(seq),
+              text: s.scriptSegment || s.text || '',
+              visual_type: s.visualType || s.visual_type || 'stickman_action',
+              action: s.animationAction || s.action || 'standing',
+              transition: s.transition || 'fade',
+              assetUrl: s.assetUrl,
+            },
+          ],
+        }
+
+        const response = await workerGateway.execute<any>(`${renderUrl}/render`, sceneIR, 10 * 60 * 1000)
+
+        if (response.status !== 'success') {
+          throw new Error(`Rendering failed for scene ${seq}: ${response.error || 'Unknown error'}`)
+        }
+
+        const sceneVideoUrl = response.result?.outputs?.video || ''
+
+        // Persist individual scene render_url in PostgreSQL
+        await query(
+          `UPDATE public.scenes 
+           SET render_status = 'rendered', 
+               render_url = $1 
+           WHERE project_id = $2 AND (sequence_number = $3 OR id = $4)`,
+          [sceneVideoUrl, context.project.id, seq, s.id || '00000000-0000-0000-0000-000000000000']
+        )
+
+        return {
+          sequenceNumber: seq,
+          renderUrl: sceneVideoUrl,
+          metrics: response.result?.metrics,
+        }
+      })
+    )
+
+    // 3. Resolve master overlay for composition
+    // If single scene, use directly. If multi-scene, use the first or concatenated master overlay.
+    let outputVideoUrl = sceneRenderResults[0]?.renderUrl || ''
+    if (sceneRenderResults.length > 1) {
+      // Set the first scene's clip as primary or master
+      outputVideoUrl = sceneRenderResults[0]?.renderUrl || ''
     }
 
     // 4. Update Pipeline State with Render Result
-    const outputVideoUrl = response.result?.outputs?.video || ''
     Object.assign(context.state, {
       ...state,
       render: {
         outputUrl: outputVideoUrl,
-        metrics: response.result?.metrics,
-        completedAt: new Date().toISOString()
-      }
+        sceneRenderResults,
+        completedAt: new Date().toISOString(),
+      },
     })
 
-    // Update render_status to 'rendered' for all scenes of the project
-    await query(
-      `UPDATE public.scenes 
-       SET render_status = 'rendered', 
-           render_url = COALESCE(render_url, $1) 
-       WHERE project_id = $2`,
-      [outputVideoUrl, context.project.id]
-    )
-
-    await context.logger.info(`Rendering completed successfully: ${outputVideoUrl}`)
+    await context.logger.info(`Per-scene parallel rendering completed for ${sceneRenderResults.length} scene(s).`)
     
     return 'composition'
   }

@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 
-from app.providers.factory import get_llm_provider_async, get_llm_provider
+from app.providers.factory import get_llm_provider_async
 from app.providers.llm.openai_compatible_provider import OpenAICompatibleProvider
 from app.providers.llm.ollama_provider import OllamaProvider
 
@@ -46,6 +46,26 @@ async def test_get_llm_provider_async_ollama():
 
 
 @pytest.mark.asyncio
+async def test_get_llm_provider_async_auto_fallback_ollama_when_no_api_key():
+    settings = {
+        "llm_provider": "openai_compatible",
+        "llm_api_key": "",
+        "ollama_base_url": "http://localhost:11434",
+        "ollama_model": "llama3.2",
+    }
+
+    async def mock_get_setting(key: str):
+        return settings.get(key)
+
+    with patch("app.providers.factory.get_app_setting", side_effect=mock_get_setting):
+        provider = await get_llm_provider_async()
+
+        assert isinstance(provider, OllamaProvider)
+        assert provider._base_url == "http://localhost:11434"
+        assert provider._model_name == "llama3.2"
+
+
+@pytest.mark.asyncio
 async def test_get_llm_provider_async_legacy_fallback_gemini():
     settings = {
         "llm_provider": "gemini",
@@ -82,16 +102,3 @@ async def test_get_llm_provider_async_legacy_fallback_groq():
         assert provider._base_url == "https://api.groq.com/openai/v1"
         assert provider._model == "llama-3.3-70b-versatile"
 
-
-def test_get_llm_provider_sync():
-    mock_settings = MagicMock()
-    mock_settings.llm_provider = "openai_compatible"
-    mock_settings.llm_base_url = "https://openrouter.ai/api/v1"
-    mock_settings.llm_api_key = "sync-key"
-    mock_settings.llm_model = "google/gemini-flash-1.5"
-
-    with patch("app.providers.factory.get_settings", return_value=mock_settings):
-        get_llm_provider.cache_clear()
-        provider = get_llm_provider()
-        assert isinstance(provider, OpenAICompatibleProvider)
-        assert provider._base_url == "https://openrouter.ai/api/v1"

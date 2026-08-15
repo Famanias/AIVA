@@ -4,12 +4,14 @@ import asyncio
 import structlog
 from typing import Callable, Any, Dict, Optional
 
+from app.core.storage import get_storage_root
+
 logger = structlog.get_logger(__name__)
 
 
 def get_checkpoint_dir(project_id: str, revision: int = 1) -> str:
     # Resolve root storage directory (storage/projects/{project_id}/revisions/v{revision})
-    base_dir = os.getenv("STORAGE_DIR", os.path.abspath("../../storage"))
+    base_dir = get_storage_root()
     rev_dir = os.path.join(base_dir, "projects", project_id, "revisions", f"v{revision}")
     os.makedirs(rev_dir, exist_ok=True)
     return rev_dir

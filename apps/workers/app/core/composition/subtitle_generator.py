@@ -1,6 +1,9 @@
 import os
 import tempfile
 from typing import List, Dict, Any
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 class SubtitleGenerator:
     """
@@ -53,7 +56,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,Text
                 f.write(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{text}\n")
                 
-        print(f"[SubtitleGenerator] Generated subtitle file at {out_path}")
+        logger.info("subtitle_file_generated", path=out_path, job_id=job_id, words_count=len(word_timings))
         return out_path
 
     @staticmethod
@@ -77,5 +80,5 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     end_str = SubtitleGenerator._format_srt_time(word_obj.get("end", 0))
                     text = word_obj.get("word", "").strip()
                     f.write(f"{idx}\n{start_str} --> {end_str}\n{text}\n\n")
-        print(f"[SubtitleGenerator] Generated SRT subtitle file at {out_path}")
+        logger.info("srt_file_generated", path=out_path, words_count=len(word_timings))
         return out_path

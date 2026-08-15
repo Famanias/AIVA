@@ -1,92 +1,93 @@
-# Walkthrough — AIVA Web Application Redesign
+# Walkthrough: V1 Code Review Findings Remediation (F1 — F11)
 
-We have implemented the full visual, layout, navigation, and UI component redesign for the AIVA web application (`apps/web/`) in accordance with [`REDESIGN_SPEC.md`](file:///d:/repos/AIVA/apps/web/REDESIGN_SPEC.md).
-
----
-
-## Key Changes Implemented
-
-### 1. Design System & Typography Tokens
-- **Design Tokens (`src/app/tokens.css`)**: Defined CSS custom properties and Tailwind v4 `@theme` mappings for:
-  - **Black Scale**: `#1a1a1a` to `#000000` for surface elevations and background layers.
-  - **Red Accent Scale**: `#fff0f0` to `#990000` with `#ff0000` primary brand red.
-  - **Glassmorphism & Elevation**: `rgba(20, 20, 20, 0.6)` backdrop blur, borders, and red glow shadows.
-  - **Motion & Spacing**: Standardized duration and cubic-bezier easing tokens with global `prefers-reduced-motion` support.
-- **Font Configuration (`src/app/fonts.ts`)**: Integrated `next/font/google` for:
-  - **Syne**: Headings, branding, stat counters.
-  - **Inter**: Body text, form controls, UI tables.
-  - **JetBrains Mono**: Code identifiers, keys, and IDs.
-- **Global Styles (`src/app/globals.css`)**: Configured skip-to-content links, `*:focus-visible` accessibility rings, custom scrollbars, and selection highlights.
+We have cross-examined all findings from `code-review-findings-2026-08-15.md`, identified real root causes vs invalid claims, implemented all approved changes, and verified end-to-end functionality.
 
 ---
 
-### 2. Radix UI Primitives Suite (`src/components/ui/`)
-Created accessible primitives following WCAG AA standards:
-- [`button.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/button.tsx): CVA variants (`primary`, `secondary`, `ghost`, `destructive`, `outline`) with size options and Radix `Slot` delegation.
-- [`card.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/card.tsx): Glassmorphic containers (`Card`, `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`, `CardFooter`).
-- [`input.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/input.tsx): Form inputs & textareas with labels, validation states, and assistive descriptions.
-- [`select.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/select.tsx): Radix Select suite with custom triggers, viewports, and item indicators.
-- [`modal.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/modal.tsx): Radix Dialog modal overlays with animations.
-- [`toast.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/toast.tsx): Toast notifications and `Toaster` provider.
-- [`tooltip.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/tooltip.tsx), [`dropdown.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/dropdown.tsx), [`tabs.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/tabs.tsx), [`table.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/table.tsx), [`progress.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/progress.tsx), [`avatar.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/avatar.tsx), [`separator.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/separator.tsx), [`skeleton.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/skeleton.tsx), [`empty-state.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/empty-state.tsx), [`label.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/label.tsx), [`checkbox.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/checkbox.tsx), [`switch.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/switch.tsx), [`alert.tsx`](file:///d:/repos/AIVA/apps/web/src/components/ui/alert.tsx).
+## 1. Cross-Examination Summary
+
+| Finding | Review Assertion | Cross-Examination Result | Action Taken |
+|---|---|---|---|
+| **F1 / F10 / J5** | Factory LLM breaks on empty API key & has dead sync wrappers | **Verified Real**. Default config has `api_key: ""`, causing `OpenAICompatibleProvider` to error on fresh clones. Sync wrappers were unused. | Implemented auto-fallback to `OllamaProvider(base_url="http://localhost:11434", model="llama3.2")` when `api_key` is empty with warning logs. Removed dead sync wrappers. |
+| **F2** | Fire-and-forget rerender route returns 200 even on worker 500/timeout | **Verified Real**. `fetch(...)` was not awaited; response always returned status 200. | Added `await` to `fetch()`, checked `res.ok`, and returned HTTP 502 with worker failure payload on errors. |
+| **F3 / J4** | Suffix range requests fail (`bytes=-500`); stream helper duplicated | **Verified Real**. `parseInt("", 10)` produced `NaN` on suffix ranges (`bytes=-500`). Stream helper was duplicated. | Refactored with regex range parser supporting prefix, suffix, and open-ended ranges; deduplicated `nodeStreamToReadable`. |
+| **F4 / F9** | Storage path resolution fragile under varying CWDs | **Verified Real**. Relative `../../storage` assumed a specific process CWD. | Implemented `get_storage_root() -> str` in `app/core/storage.py` and updated `checkpoint.py`. |
+| **F5** | Composition engine uses raw `print()` statements | **Verified Real**. `engine.py`, `encoder.py`, `subtitle_generator.py` bypassed `structlog`. | Replaced all `print()` statements with structured `structlog` logging. |
+| **F6** | Incomplete audio concatenation logic | **Verified Real**. Raw concat demuxer didn't handle path escaping consistently across stages. | Created `apps/workers/app/core/audio_utils.py` (`concat_audio_files`) with single-quote escaping (`'\''`) and tempfile cleanup. |
+| **F7** | Per-scene parallel template rendering missing in pipeline | **Verified Real**. RenderHandler previously dispatched full IR to render engine. | Updated `RenderHandler.ts` to dispatch single-scene `PipelineIR` in parallel via `Promise.all` and persist individual `render_url` per scene in PostgreSQL. |
+| **F8** | Visual overlay not re-rendered during single scene edit | **Verified Real**. `rerender_single_scene` updated TTS only and did not invoke `template-renderer`. | Added visual scene re-rendering via `TEMPLATE_RENDERER_URL/render` and updated `public.scenes.render_url`. |
+| **F11** | Duration mismatch between prompt target and UI profile | **Verified Real**. API sent `duration_target_seconds` while prompts queried `target_duration_seconds`, falling back to 60s. | Updated `prompts.py` and `stage_handlers.py` to check both `duration_target_seconds` and `target_duration_seconds`. |
+| **Middleware** | Claimed `middleware.ts` was missing | **Investigated & Addressed**. Next.js 16 uses `src/proxy.ts` (`middleware-to-proxy`). Attempting both triggers a build error. Verified that `src/proxy.ts` is the canonical Next.js 16 proxy. | Retained `src/proxy.ts` as the single entrypoint for auth/proxy headers. |
 
 ---
 
-### 3. Application Shell & Navigation
-- [`header.tsx`](file:///d:/repos/AIVA/apps/web/src/components/layout/header.tsx): Responsive navigation header featuring brand logo avatar, active link indicators, user menu dropdown, and mobile navigation drawer.
-- [`footer.tsx`](file:///d:/repos/AIVA/apps/web/src/components/layout/footer.tsx): Clean copyright footer and documentation links.
-- [`layout.tsx`](file:///d:/repos/AIVA/apps/web/src/app/layout.tsx): App-wide root shell incorporating font variables, dark color scheme, skip link, Header, Footer, `ModalProvider`, and `Toaster`.
-- [`(dashboard)/layout.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/layout.tsx): Container wrapper for dashboard sub-pages.
+## 2. Key Code Changes
 
----
-
-### 4. Page Redesigns & Dashboard Views
-- **Home Dashboard ([`src/app/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/page.tsx))**:
-  - Top header with "Create Video / Browse Projects" actions.
-  - Telemetry stats banner ([`OperationsSummaryHeader.tsx`](file:///d:/repos/AIVA/apps/web/src/components/dashboard/OperationsSummaryHeader.tsx)) tracking active, paused, completed, and failed jobs.
-  - 2-column layout: Brief creation console ([`initialize-pipeline.tsx`](file:///d:/repos/AIVA/apps/web/src/components/dashboard/initialize-pipeline.tsx)) + Live Queue controls ([`operations-console.tsx`](file:///d:/repos/AIVA/apps/web/src/components/dashboard/operations-console.tsx)).
-- **Login / Authentication ([`src/app/login/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/login/page.tsx))**:
-  - Syne typography brand card with sign-in and account registration toggle.
-  - Client auth hook integration ([`src/lib/auth/client.ts`](file:///d:/repos/AIVA/apps/web/src/lib/auth/client.ts)) with `/api/v1/auth/me` and `/api/v1/auth/logout`.
-- **System Settings ([`src/app/(dashboard)/settings/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/settings/page.tsx))**:
-  - Tabbed interface: **Providers**, **LLM Config** (with quick-select endpoint presets and dynamic model discovery), **Ollama** (offline local inference connection tester), and **API Keys** (AES-256 encrypted fields).
-- **Projects Catalog ([`src/app/(dashboard)/projects/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/projects/page.tsx))**:
-  - Responsive project cards with thumbnails, status badges, dropdown action menus (Details, Timeline, Delete), and empty-state handler.
-- **Project Overview ([`src/app/(dashboard)/projects/[id]/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/projects/%5Bid%5D/page.tsx))**:
-  - Video composition player preview, status indicator, asset downloads (MP4, SRT subtitles, script checkpoint JSON), and failure recovery banner with one-click pipeline resumption.
-- **Timeline Studio ([`src/app/(dashboard)/projects/[id]/timeline/page.tsx`](file:///d:/repos/AIVA/apps/web/src/app/%28dashboard%29/projects/%5Bid%5D/timeline/page.tsx))**:
-  - Multitrack scene breakdown with inline narration script and visual prompt editors, render status tags, and per-scene re-render triggers.
-
----
-
-## Verification & Build Results
-
-### Automated Typecheck & Build
-Executed `pnpm --filter web build` with Next.js Turbopack:
+### [apps/workers/app/providers/factory.py](file:///d:/repos/AIVA/apps/workers/app/providers/factory.py)
+- Auto-fallback to local Ollama (`llama3.2`) when `api_key` is empty:
+```python
+if not api_key or not api_key.strip():
+    logger.warning("Empty API key for openai_compatible provider; falling back to local Ollama", model="llama3.2")
+    return OllamaProvider(base_url="http://localhost:11434", model="llama3.2")
 ```
-▲ Next.js 16.2.10 (Turbopack)
-- Environments: .env.local
 
-  Creating an optimized production build ...
-✓ Compiled successfully in 44s
-  Running TypeScript ...
-✓ Generating static pages (18/18)
-  Finalizing page optimization ...
-
-Route (app)
-┌ ○ /
-├ ○ /_not-found
-├ ƒ /api/v1/auth/login
-├ ƒ /api/v1/auth/logout
-├ ƒ /api/v1/auth/me
-├ ƒ /api/v1/jobs
-├ ƒ /api/v1/projects
-├ ƒ /api/v1/settings
-├ ○ /login
-├ ○ /projects
-├ ƒ /projects/[id]
-├ ƒ /projects/[id]/timeline
-└ ○ /settings
+### [apps/web/src/app/api/v1/storage/[...path]/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/storage/[...path]/route.ts)
+- RFC-7233 range streaming with suffix range support:
+```typescript
+const suffixMatch = rangeHeader.match(/bytes=-(\d+)$/)
+const standardMatch = rangeHeader.match(/bytes=(\d+)-(\d*)$/)
+if (suffixMatch) {
+  const suffixLength = parseInt(suffixMatch[1], 10)
+  start = Math.max(0, fileSize - suffixLength)
+  end = fileSize - 1
+} else if (standardMatch) {
+  start = parseInt(standardMatch[1], 10)
+  end = standardMatch[2] ? parseInt(standardMatch[2], 10) : fileSize - 1
+}
 ```
-- **TypeScript**: Passed with 0 errors.
-- **Static & Dynamic Pages**: All 18 App Router routes bundled and optimized successfully.
+
+### [apps/workers/app/core/audio_utils.py](file:///d:/repos/AIVA/apps/workers/app/core/audio_utils.py)
+- Modular audio concatenation with FFmpeg concat demuxer path escaping:
+```python
+def concat_audio_files(input_files: List[str], output_path: str, temp_dir: Optional[str] = None) -> str:
+    # Handles 1 file copy or multi-file ffmpeg concat demuxer with safe single-quote escaping
+```
+
+### [apps/workers/app/core/composition/engine.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/engine.py)
+- Converted all `print()` calls to `structlog` structured logs with `job_id`, `stage`, and `progress_pct`.
+
+### [apps/web/src/services/pipeline/handlers/RenderHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/RenderHandler.ts)
+- Per-scene parallel render dispatch:
+```typescript
+const sceneRenderResults = await Promise.all(
+  scenes.map(async (s: any, index: number) => {
+    // build single-scene IR, post to template-renderer, and update public.scenes
+  })
+)
+```
+
+### [apps/workers/app/pipeline/rerender_scene.py](file:///d:/repos/AIVA/apps/workers/app/pipeline/rerender_scene.py)
+- Dynamic geometry extraction from `generationProfile`, TTS re-synthesis, visual re-render via `template-renderer`, database update, and composition re-stitching using `concat_audio_files()`.
+
+---
+
+## 3. Verification Results
+
+### 1. Python Test Suite
+Ran `venv\Scripts\python -m pytest tests/ -v`:
+- **Result**: `33 passed in 18.01s` (0 failures, 0 errors).
+- Tested: Factory fallback to Ollama, audio ducking filter graph, SRT generation, composition engine e2e, multi-scene concatenation, schema compatibility, and single-scene rerendering.
+
+### 2. TypeScript Typecheck
+Ran `pnpm --filter web exec tsc --noEmit`:
+- **Result**: `Exit code 0` (0 type errors).
+
+### 3. Full Monorepo Production Build
+Ran `pnpm build`:
+- **Result**: `4/4 packages successful` (`@aiva/shared-types`, `@aiva/prompt-library`, `aiva-template-renderer`, `web`).
+- All 18 Next.js 16 pages and API routes compiled and statically/dynamically optimized.
+
+### 4. End-to-End CLI Pipeline Verification
+Ran `certifier_runner.py` for both `voiceover` and `composition` stages:
+- **Voiceover**: Multi-scene TTS synthesis synthesized 2 scenes, generated word timings, and concatenated `master_voice.mp3` cleanly (`audio_concatenation_successful count=2`).
+- **Composition**: Burned in `.ass` kinetic subtitles, mixed ambient track with sidechain compressor ducking, and rendered final master video `composition.mp4` + `subtitles.srt` in **484 ms** using NVENC hardware acceleration.

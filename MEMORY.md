@@ -134,6 +134,7 @@ The baseline environments are established as Node.js 20 (for Remotion/Next.js) a
 - **2026-07-22**: Resolved duplicate BullMQ worker instantiation caused by Next.js HMR by binding `Worker` to `globalThis.__bullmq_worker`. Upgraded `edge-tts` to `7.2.8` to fix breaking Microsoft WebSocket 403 handshake changes, and pinned `httpx` to `0.27.2` to resolve `openai 1.51.0` `proxies=` keyword argument incompatibilities. Corrected Supabase JWT service role key authentication in `.env`.
 - **2026-07-22**: Fixed semantic video rendering issues. Resolved multi-scene background track letterboxing and bottom-clipping by introducing aspect ratio scaling, cropping, and sample aspect ratio normalization (`scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1`) in `graph_builder.py`. Concatenated multi-scene audio narrations in `CompositionHandler.ts` and downloaded real 9:16 stock media images into `sample_project_artifact.json`, producing high-definition 4.3 MB master vertical MP4 videos (`master_...mp4`).
 - **2026-08-14**: Completed migration from Supabase to Standalone Local PostgreSQL 16 (with `pgvector`) and local session management (`AIVA_AUTH_MODE=local`). Replaced Supabase Client/Realtime in web providers with REST polling and SSE, consolidated 8 migrations under `packages/database/migrations/`, updated `migrate.ts` runner, decoupled auth in job routes, and completely uninstalled `@supabase/*` SDKs. Zero runtime Supabase dependencies remaining.
+- **2026-08-15**: Fixed 11 code review findings (F1-F11) across Python workers, Next.js API routes, and composition engine. Implemented empty-key local Ollama auto-fallback, RFC-7233 range stream parser with suffix range support, deterministic storage root resolution, unified duration target naming, modular audio concatenation helper with FFmpeg demuxer escaping, structured `structlog` logging in composition engine, parallel per-scene template rendering, and visual overlay re-rendering in single-scene rerender. Verified with 33/33 pytest pass and clean monorepo `pnpm build`.
 
 ---
 
@@ -143,8 +144,18 @@ The baseline environments are established as Node.js 20 (for Remotion/Next.js) a
 
 AIVA is 100% self-hosted and local-first. Cloud Supabase dependencies have been removed. PostgreSQL 16 (with `pgvector`) runs locally via `infra/docker-compose.yml` (`pnpm services:up`) and migrations are applied directly via `pnpm db:migrate`. Frontend state synchronization uses native REST polling endpoints (`/api/v1/projects`, `/api/v1/jobs/[id]/events`), and user authentication uses lightweight session tokens with local fallback (`local@aiva.internal`). See ADR-005.
 
+## AD-020 — LLM Factory Zero-Configuration Local Ollama Fallback
+
+When `llm_provider` is `openai_compatible` but `llm_api_key` is empty (such as in fresh clones before user configuration), `get_llm_provider_async()` automatically falls back to `OllamaProvider(base_url="http://localhost:11434", model="llama3.2")` with a warning log, ensuring local-first generation works out of the box without crashing on missing keys.
+
+## AD-021 — Parallel Per-Scene Render Dispatch & Visual Rerendering
+
+`RenderHandler` dispatches single-scene `PipelineIR` payloads to `template-renderer` in parallel via `Promise.all`, persisting each scene's individual transparent WebM overlay path into `public.scenes.render_url`. When scenes are edited in the Studio UI, `rerender_single_scene` re-synthesizes voiceover, invokes `template-renderer` for the modified scene's visual overlay, and re-stitches master composition using cached assets.
+
 ---
 
 # Discoveries
 
 - **Groq API Rate Limits**: `llama-3.3-70b-versatile` has strict 100k Tokens-Per-Day (TPD) limits, which get exhausted very quickly in a full pipeline test. Switching to `llama-3.1-8b-instant` provides a separate, faster quota (though still subject to 6,000 Tokens-Per-Minute limits for large requests). The pipeline MUST gracefully handle or backoff on HTTP 429/413 rate limit errors from Groq.
+- **Next.js 16 Proxy Convention**: Next.js 16 Turbopack replaces `middleware.ts` with `src/proxy.ts`. Attempting to define both triggers a build-time fatal error (`middleware-to-proxy`). `src/proxy.ts` must remain the single entrypoint for auth token extraction and proxy headers.
+

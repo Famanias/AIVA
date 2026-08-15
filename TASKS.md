@@ -136,9 +136,22 @@ Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 - [x] Implemented App Shell (`Header`, `Footer`, `DashboardLayout`, `RootLayout`) with accessible skip links and responsive navigation
 - [x] Redesigned Home Dashboard (`/`), Login/Signup (`/login`), Tabbed Settings console (`/settings`), Projects Catalog (`/projects`), Project Overview (`/projects/[id]`), and Timeline Studio (`/projects/[id]/timeline`)
 
+## 15. Code Review Findings Remediation (V1 Hardening)
+
+- [x] **F1 / F10 / J5**: Added auto-fallback to local Ollama (`llama3.2`) in `factory.py` when `api_key` is empty; cleaned dead synchronous provider wrappers and added warning for unknown providers
+- [x] **F2**: Added `await` to rerender worker dispatch in `rerender/route.ts` and returned HTTP 502 with error details on failure
+- [x] **F3 / J4**: Implemented full RFC-7233 byte-range parser in `storage/[...path]/route.ts` with suffix range (`bytes=-N`) support and deduplicated Node stream helpers
+- [x] **F4 / F9**: Resolved absolute project storage paths via `get_storage_root()` in `storage.py` and `checkpoint.py`
+- [x] **F5**: Replaced all raw `print()` statements with structured `structlog` logging in composition engine (`engine.py`, `encoder.py`, `subtitle_generator.py`)
+- [x] **F6**: Modularized multi-scene voiceover concatenation in `audio_utils.py` with sanitized single quotes for FFmpeg concat demuxer
+- [x] **F7**: Implemented parallel per-scene render dispatch in `RenderHandler.ts` and persisted individual scene `render_url` in PostgreSQL
+- [x] **F8**: Implemented dynamic geometry extraction and visual scene re-rendering via `template-renderer` in `rerender_single_scene`
+- [x] **F11**: Unified prompt duration pacing to check `duration_target_seconds` alongside `target_duration_seconds` in `prompts.py` and `stage_handlers.py`
+
 ---
 
 # Completed
 
-- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, Deterministic Project Artifact Persistence System with Checkpoint Resumability, and Full Web App Redesign.
+- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, Deterministic Project Artifact Persistence System with Checkpoint Resumability, Full Web App Redesign, and V1 Code Review Remediation (F1-F11).
+
 

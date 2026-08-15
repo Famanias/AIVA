@@ -16,6 +16,7 @@ async def test_rerender_single_scene_flow():
         "sequence_number": 1,
         "duration": 4.0,
         "voiceover_url": "/tmp/old_voice.mp3",
+        "render_url": None,
         "script_segment": "Updated script text for scene 1",
         "visual_type": "character_animation",
         "visual_prompt": "new aircraft in flight",

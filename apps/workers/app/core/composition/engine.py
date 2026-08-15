@@ -2,11 +2,14 @@ import os
 import uuid
 import tempfile
 from typing import Callable, Any
+import structlog
 from app.models.composition import CompositionModel, CompositionResult, MediaReference
 from app.core.composition.validator import CompositionValidator
 from app.core.composition.subtitle_generator import SubtitleGenerator
 from app.core.composition.graph_builder import FilterGraphBuilder
 from app.core.composition.encoder import Encoder
+
+logger = structlog.get_logger(__name__)
 
 class CompositionEngine:
     """
@@ -17,7 +20,7 @@ class CompositionEngine:
     @staticmethod
     def run(model: CompositionModel, emit_progress: Callable[[str, int], Any] = None) -> CompositionResult:
         def log_progress(msg: str, pct: int):
-            print(f"[CompositionEngine] {msg} ({pct}%)")
+            logger.info("composition_progress", stage=msg, progress_pct=pct, job_id=model.job_id)
             if emit_progress:
                 emit_progress(msg, pct)
                 
@@ -53,7 +56,7 @@ class CompositionEngine:
             target_mp4 = os.path.join(storage_dir, "composition.mp4")
             import shutil
             shutil.copy2(output_path, target_mp4)
-            print(f"[CompositionEngine] Persisted final video to {target_mp4}")
+            logger.info("persisted_final_video", target_path=target_mp4, job_id=model.job_id)
 
             target_srt = os.path.join(storage_dir, "subtitles.srt")
             SubtitleGenerator.generate_srt(model.word_timings, target_srt)
@@ -81,5 +84,5 @@ class CompositionEngine:
             )
             
         except Exception as e:
-            print(f"[CompositionEngine] Fatal Error: {e}")
+            logger.error("composition_fatal_error", error=str(e), job_id=model.job_id)
             raise e
