@@ -1,26 +1,88 @@
 import React from 'react';
-import { AbsoluteFill, useVideoConfig, useCurrentFrame, Img, spring } from 'remotion';
+import { AbsoluteFill, useVideoConfig, useCurrentFrame, Img, Video, spring, interpolate } from 'remotion';
 
-export const KenBurns: React.FC<{ params: any; wordTimings: any[] }> = ({ params, wordTimings }) => {
-  const { fps, durationInFrames, width, height } = useVideoConfig();
+export const KenBurns: React.FC<{ model?: any; params?: any; wordTimings?: any[] }> = ({
+  model,
+  params = {},
+  wordTimings = [],
+}) => {
+  const { fps, durationInFrames } = useVideoConfig();
   const frame = useCurrentFrame();
 
-  const scale = spring({
+  const rawAssetUrl = model?.scenes?.[0]?.assetUrl || params?.assetUrl || params?.asset_url || '';
+  
+  // Format local Windows/Unix paths for Chromium Img/Video elements
+  let assetUrl = rawAssetUrl;
+  if (typeof assetUrl === 'string' && assetUrl.length > 0 && !assetUrl.startsWith('http://') && !assetUrl.startsWith('https://') && !assetUrl.startsWith('data:') && !assetUrl.startsWith('file:///')) {
+    assetUrl = `file:///${assetUrl.replace(/\\/g, '/')}`;
+  }
+
+  const isVideo = typeof assetUrl === 'string' && (
+    assetUrl.endsWith('.mp4') || assetUrl.endsWith('.webm') || assetUrl.includes('/video/')
+  );
+  const isImage = typeof assetUrl === 'string' && (
+    assetUrl.endsWith('.jpg') || assetUrl.endsWith('.jpeg') || assetUrl.endsWith('.png') ||
+    assetUrl.endsWith('.webp') || assetUrl.includes('pollinations.ai') || assetUrl.includes('pexels.com/photos')
+  );
+
+  // Smooth cinematic pan & zoom spring animation
+  const progress = spring({
     frame,
     fps,
     config: {
       damping: 200,
     },
-    durationInFrames: durationInFrames,
-  }) * 0.2 + 1; // 1 to 1.2
+    durationInFrames: Math.max(durationInFrames, 30),
+  });
+
+  const scale = interpolate(progress, [0, 1], [1.0, 1.15]);
+  const translateY = interpolate(progress, [0, 1], [0, -20]);
 
   return (
-    <AbsoluteFill style={{ backgroundColor: 'transparent' }}>
-      {/* 
-        This is a transparent overlay layer. 
-        The FFmpeg compositor will place the downloaded Pexels/SDXL background tracks underneath this layer, 
-        and the SubtitleGenerator will burn the Whisper subtitles on top of it.
-      */}
+    <AbsoluteFill style={{ backgroundColor: '#0a0a0f', overflow: 'hidden' }}>
+      {/* Visual Media Layer */}
+      {isVideo && assetUrl ? (
+        <AbsoluteFill>
+          <Video
+            src={assetUrl}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: `scale(${scale})`,
+            }}
+            muted
+            loop
+          />
+        </AbsoluteFill>
+      ) : isImage && assetUrl ? (
+        <AbsoluteFill>
+          <Img
+            src={assetUrl}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: `scale(${scale}) translateY(${translateY}px)`,
+            }}
+          />
+        </AbsoluteFill>
+      ) : (
+        /* Dynamic Cinematic Ambient Background if no direct asset passed */
+        <AbsoluteFill
+          style={{
+            background: 'linear-gradient(135deg, #090d16 0%, #111827 50%, #0f172a 100%)',
+          }}
+        />
+      )}
+
+      {/* Subtle Cinematic Vignette / Gradient for subtitle contrast */}
+      <AbsoluteFill
+        style={{
+          background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.3) 100%)',
+          pointerEvents: 'none',
+        }}
+      />
     </AbsoluteFill>
   );
 };

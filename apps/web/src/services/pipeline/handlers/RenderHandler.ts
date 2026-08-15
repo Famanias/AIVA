@@ -59,7 +59,7 @@ export class RenderHandler extends BaseHandler {
           templateFamily: style,
           metadata: {
             projectId: context.project.id,
-            jobId: `${context.job.id}_scene_${seq}`,
+            jobId: context.job.id,
             topic: context.project.topic,
             canvasConfig: {
               width,
@@ -79,7 +79,7 @@ export class RenderHandler extends BaseHandler {
               visual_type: s.visualType || s.visual_type || 'stickman_action',
               action: s.animationAction || s.action || 'standing',
               transition: s.transition || 'fade',
-              assetUrl: s.assetUrl,
+              assetUrl: s.assetUrl || s.asset_manifest?.asset_slots?.background?.storage_key || s.asset_manifest?.background?.storage_key || '',
             },
           ],
         }

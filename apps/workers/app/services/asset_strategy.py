@@ -1,6 +1,6 @@
 from typing import List, Optional
 from app.models.asset import RankedCandidate, AssetConfig
-from app.providers.asset_providers import IAssetProvider, PexelsProvider, SDXLProvider
+from app.providers.asset_providers import IAssetProvider, PexelsProvider, PixabayProvider, PollinationsProvider, SDXLProvider
 from app.services.asset_search import AssetSearchService
 from app.services.asset_ranker import AssetRanker
 from app.services.asset_downloader import AssetDownloader
@@ -15,16 +15,18 @@ class AssetSelectionStrategy:
         self.repository = repository
         self.ranker = AssetRanker()
         
-        # Provider Chain Definition
+        # Multi-Tier Provider Chain Definition
         self.chain: List[IAssetProvider] = [
             PexelsProvider(),
+            PixabayProvider(),
+            PollinationsProvider(),
             SDXLProvider()
         ]
 
     async def resolve_for_scene(self, scene_text: str, query: str, config: AssetConfig) -> Optional[RankedCandidate]:
         for provider in self.chain:
             try:
-                # 1. Search
+                # 1. Search / Generate
                 candidates = await AssetSearchService.search(provider, query, limit=config.max_candidates)
                 
                 if not candidates:
@@ -38,7 +40,8 @@ class AssetSelectionStrategy:
                 best_candidate = ranked[0]
                 
                 # Check semantic threshold (unless it's a generated asset which always scores 1.0)
-                if best_candidate.score < config.semantic_threshold and provider.name != "sdxl":
+                is_generated = provider.name in ("pollinations", "sdxl")
+                if best_candidate.score < config.semantic_threshold and not is_generated:
                     print(f"[AssetSelectionStrategy] Best match for '{query}' on {provider.name} scored {best_candidate.score}, which is below threshold {config.semantic_threshold}. Skipping provider.")
                     continue
 

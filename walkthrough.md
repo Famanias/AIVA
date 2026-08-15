@@ -1,133 +1,65 @@
-# Walkthrough: V1 Code Review Findings Remediation (F1 — F11)
+# Walkthrough: AI Studio Briefing & Dynamic Visual Video Engine
 
-We have cross-examined all findings from `code-review-findings-2026-08-15.md`, identified real root causes vs invalid claims, implemented all approved changes, and verified end-to-end functionality.
-
----
-
-## 1. Cross-Examination Summary
-
-| Finding | Review Assertion | Cross-Examination Result | Action Taken |
-|---|---|---|---|
-| **F1 / F10 / J5** | Factory LLM breaks on empty API key & has dead sync wrappers | **Verified Real**. Default config has `api_key: ""`, causing `OpenAICompatibleProvider` to error on fresh clones. Sync wrappers were unused. | Implemented auto-fallback to `OllamaProvider(base_url="http://localhost:11434", model="llama3.2")` when `api_key` is empty with warning logs. Removed dead sync wrappers. |
-| **F2** | Fire-and-forget rerender route returns 200 even on worker 500/timeout | **Verified Real**. `fetch(...)` was not awaited; response always returned status 200. | Added `await` to `fetch()`, checked `res.ok`, and returned HTTP 502 with worker failure payload on errors. |
-| **F3 / J4** | Suffix range requests fail (`bytes=-500`); stream helper duplicated | **Verified Real**. `parseInt("", 10)` produced `NaN` on suffix ranges (`bytes=-500`). Stream helper was duplicated. | Refactored with regex range parser supporting prefix, suffix, and open-ended ranges; deduplicated `nodeStreamToReadable`. |
-| **F4 / F9** | Storage path resolution fragile under varying CWDs | **Verified Real**. Relative `../../storage` assumed a specific process CWD. | Implemented `get_storage_root() -> str` in `app/core/storage.py` and updated `checkpoint.py`. |
-| **F5** | Composition engine uses raw `print()` statements | **Verified Real**. `engine.py`, `encoder.py`, `subtitle_generator.py` bypassed `structlog`. | Replaced all `print()` statements with structured `structlog` logging. |
-| **F6** | Incomplete audio concatenation logic | **Verified Real**. Raw concat demuxer didn't handle path escaping consistently across stages. | Created `apps/workers/app/core/audio_utils.py` (`concat_audio_files`) with single-quote escaping (`'\''`) and tempfile cleanup. |
-| **F7** | Per-scene parallel template rendering missing in pipeline | **Verified Real**. RenderHandler previously dispatched full IR to render engine. | Updated `RenderHandler.ts` to dispatch single-scene `PipelineIR` in parallel via `Promise.all` and persist individual `render_url` per scene in PostgreSQL. |
-| **F8** | Visual overlay not re-rendered during single scene edit | **Verified Real**. `rerender_single_scene` updated TTS only and did not invoke `template-renderer`. | Added visual scene re-rendering via `TEMPLATE_RENDERER_URL/render` and updated `public.scenes.render_url`. |
-| **F11** | Duration mismatch between prompt target and UI profile | **Verified Real**. API sent `duration_target_seconds` while prompts queried `target_duration_seconds`, falling back to 60s. | Updated `prompts.py` and `stage_handlers.py` to check both `duration_target_seconds` and `target_duration_seconds`. |
-| **Middleware** | Claimed `middleware.ts` was missing | **Investigated & Addressed**. Next.js 16 uses `src/proxy.ts` (`middleware-to-proxy`). Attempting both triggers a build error. Verified that `src/proxy.ts` is the canonical Next.js 16 proxy. | Retained `src/proxy.ts` as the single entrypoint for auth/proxy headers. |
+We upgraded AIVA from rigid template selectors to an interactive **AI Studio Briefing Chatroom**, integrated **Multi-Tier Free Video & AI Asset Providers (Pexels, Pixabay, Pollinations.ai)**, fixed the FFmpeg visual track data contract, and enabled the **Remotion Ken Burns Motion Engine** for cinematic 60 FPS video generation.
 
 ---
 
-## 2. Key Code Changes
+## What Was Changed
 
-### [apps/workers/app/providers/factory.py](file:///d:/repos/AIVA/apps/workers/app/providers/factory.py)
-- Auto-fallback to local Ollama (`llama3.2`) when `api_key` is empty:
-```python
-if not api_key or not api_key.strip():
-    logger.warning("Empty API key for openai_compatible provider; falling back to local Ollama", model="llama3.2")
-    return OllamaProvider(base_url="http://localhost:11434", model="llama3.2")
-```
+### 1. Interactive AI Studio Briefing Chat
+- **New API Route** ([route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/studio/brief/route.ts)): Coordinates conversational creative briefing with the active LLM provider (OmniRoute / OpenRouter / Ollama).
+- **Redesigned Dashboard Component** ([initialize-pipeline.tsx](file:///d:/repos/AIVA/apps/web/src/components/dashboard/initialize-pipeline.tsx)):
+  - Replaced rigid template dropdowns with an **AI Studio Producer Chat**.
+  - When entering a concept, the AI analyzes the angle and asks 2–3 sharp questions to nail down tone, mood, and visual vibe.
+  - Retained a dedicated **Quick Script Launch** tab for 1-click video creation when pasting full scripts.
 
-### [apps/web/src/app/api/v1/storage/[...path]/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/storage/[...path]/route.ts)
-- RFC-7233 range streaming with suffix range support:
-```typescript
-const suffixMatch = rangeHeader.match(/bytes=-(\d+)$/)
-const standardMatch = rangeHeader.match(/bytes=(\d+)-(\d*)$/)
-if (suffixMatch) {
-  const suffixLength = parseInt(suffixMatch[1], 10)
-  start = Math.max(0, fileSize - suffixLength)
-  end = fileSize - 1
-} else if (standardMatch) {
-  start = parseInt(standardMatch[1], 10)
-  end = standardMatch[2] ? parseInt(standardMatch[2], 10) : fileSize - 1
-}
-```
+### 2. Multi-Tier Free Asset Providers & Hybrid Smart Routing
+- **Updated Provider Engine** ([asset_providers.py](file:///d:/repos/AIVA/apps/workers/app/providers/asset_providers.py)):
+  - **Pexels Video API**: Searches portrait HD video clips with portrait/landscape fallbacks and photo backup.
+  - **Pixabay Video API**: Integrated for free stock video clips and dynamic background loops.
+  - **Pollinations.ai Provider**: 100% free, zero-key Flux/SDXL image generator at 9:16 portrait resolution for abstract, historical, or imaginative scenes.
+- **Hybrid Selection Strategy** ([asset_strategy.py](file:///d:/repos/AIVA/apps/workers/app/services/asset_strategy.py)): Chains `Pexels -> Pixabay -> Pollinations -> SDXL`.
 
-### [apps/workers/app/core/audio_utils.py](file:///d:/repos/AIVA/apps/workers/app/core/audio_utils.py)
-- Modular audio concatenation with FFmpeg concat demuxer path escaping:
-```python
-def concat_audio_files(input_files: List[str], output_path: str, temp_dir: Optional[str] = None) -> str:
-    # Handles 1 file copy or multi-file ffmpeg concat demuxer with safe single-quote escaping
-```
+### 3. Pipeline Data Contract & Asset Slot Alignment
+- **Fixed Composition Handler** ([CompositionHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts)): Correctly extracts `scene.asset_manifest.asset_slots.background.storage_key` and aligns per-scene durations from voiceovers.
+- **Fixed Render Handler** ([RenderHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/RenderHandler.ts)): Propagates resolved `assetUrl` into Remotion `PipelineIR`.
+- **Enriched Asset Router** ([assets.py](file:///d:/repos/AIVA/apps/workers/app/routers/assets.py)): Enriches scene payloads with `assetUrl`, `asset_url`, and `asset_ref`.
 
-### [apps/workers/app/core/composition/engine.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/engine.py)
-- Converted all `print()` calls to `structlog` structured logs with `job_id`, `stage`, and `progress_pct`.
-
-### [apps/web/src/services/pipeline/handlers/RenderHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/RenderHandler.ts)
-- Per-scene parallel render dispatch:
-```typescript
-const sceneRenderResults = await Promise.all(
-  scenes.map(async (s: any, index: number) => {
-    // build single-scene IR, post to template-renderer, and update public.scenes
-  })
-)
-```
-
-### [apps/workers/app/pipeline/rerender_scene.py](file:///d:/repos/AIVA/apps/workers/app/pipeline/rerender_scene.py)
-- Dynamic geometry extraction from `generationProfile`, TTS re-synthesis, visual re-render via `template-renderer`, database update, and composition re-stitching using `concat_audio_files()`.
+### 4. Remotion Ken Burns & FFmpeg Composition Engine
+- **Ken Burns Motion Template** ([KenBurns.tsx](file:///d:/repos/AIVA/apps/template-renderer/src/templates/ken-burns/KenBurns.tsx)): Renders real image/video assets with cinematic spring-based pan, tilt, zoom, and dark gradient overlays.
+- **FFmpeg Trimming & Concatenation** ([graph_builder.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/graph_builder.py)): Crops, scales (1080x1920 9:16), trims each background video to its voiceover duration, and concatenates all scenes seamlessly with auto-ducked ambient audio.
 
 ---
 
-## 3. Verification Results
+## Verification Results
 
-### 1. Python Test Suite
-Ran `venv\Scripts\python -m pytest tests/ -v`:
-- **Result**: `33 passed in 18.01s` (0 failures, 0 errors).
-- Tested: Factory fallback to Ollama, audio ducking filter graph, SRT generation, composition engine e2e, multi-scene concatenation, schema compatibility, and single-scene rerendering.
-
-### 2. TypeScript Typecheck
-Ran `pnpm --filter web exec tsc --noEmit`:
-- **Result**: `Exit code 0` (0 type errors).
-
-### 3. Full Monorepo Production Build
-Ran `pnpm build`:
-- **Result**: `4/4 packages successful` (`@aiva/shared-types`, `@aiva/prompt-library`, `aiva-template-renderer`, `web`).
-- All 18 Next.js 16 pages and API routes compiled and statically/dynamically optimized.
-
-### 4. End-to-End CLI Pipeline Verification
-Ran `certifier_runner.py` for both `voiceover` and `composition` stages:
-- **Voiceover**: Multi-scene TTS synthesis synthesized 2 scenes, generated word timings, and concatenated `master_voice.mp3` cleanly (`audio_concatenation_successful count=2`).
-- **Composition**: Burned in `.ass` kinetic subtitles, mixed ambient track with sidechain compressor ducking, and rendered final master video `composition.mp4` + `subtitles.srt` in **484 ms** using NVENC hardware acceleration.
+### Automated Tests
+- **Monorepo Build:** `pnpm build` completed with **4/4 packages successful** (0 TypeScript/Next.js/Remotion errors).
+- **Worker Tests:** `pytest tests/` passed **33/33 tests** (`33 passed in 40.34s`).
 
 ---
 
-## 4. Manual QA Validation
+## Manual QA Verification Steps
 
-To manually validate these changes in your local environment, you can perform the following steps:
+You can validate these new capabilities directly in your browser:
 
-1. **Verify Ollama Fallback (F1)**
-   - Remove or empty the `OPENAI_API_KEY` (or equivalent) in your worker `.env` file.
-   - Start the Python worker.
-   - Trigger a script/prompt generation.
-   - Observe the worker logs for the warning: `Empty API key for openai_compatible provider; falling back to local Ollama`.
+### Step 1: Test the Interactive AI Studio Briefing
+1. Navigate to [http://localhost:3000](http://localhost:3000).
+2. On the **Studio Briefing** tab, enter a concept topic (e.g., *"The Mystery of the Voynich Manuscript"* or *"Why did Coffee change the world?"*).
+3. Click **Start Briefing Chat**.
+4. Observe the AI Creative Director analyzing your topic and asking 2–3 creative direction questions (tone, mood, visual preference).
+5. Reply in chat (e.g., *"Make it dark and mysterious with cinematic visuals"*).
+6. Click **Generate Video with this Brief**.
 
-2. **Verify Storage Range Requests (F3)**
-   - Run the Next.js server (`pnpm dev`).
-   - Use `curl` to request a suffix byte range from an existing storage asset:
-     ```bash
-     curl -i -H "Range: bytes=-500" http://localhost:3000/api/v1/storage/your-project-id/master_voice.mp3
-     ```
-   - Verify the response is `206 Partial Content` and contains exactly the last 500 bytes of the file.
+### Step 2: Test 1-Click Quick Script Launch
+1. On the dashboard, switch to the **Quick Script Launch** tab.
+2. Paste a custom script.
+3. Click **Launch 1-Click Video Generation**.
 
-3. **Verify Parallel Scene Rendering (F7)**
-   - Submit a new video generation request with multiple scenes.
-   - Observe the network requests or Next.js logs.
-   - You should see multiple `PipelineIR` payloads dispatched simultaneously, rather than sequentially.
-
-4. **Verify Single Scene Visual Rerender (F8)**
-   - In the Next.js UI, navigate to an existing video project.
-   - Edit the text/script of a single scene and click rerender for that scene.
-   - Verify that the `template-renderer` is invoked for that specific scene and the visual overlay (text/avatar) updates in the UI preview.
-
-5. **Verify Structured Logging (F5)**
-   - While generating a video, observe the Python worker terminal output.
-   - Verify that log statements from `engine.py`, `encoder.py`, and `subtitle_generator.py` are output as structured JSON/key-value lines (via `structlog`) containing `job_id`, `stage`, and `progress_pct` rather than plain text statements.
-
-6. **Verify Settings Model Auto-Detection & Save Without Manual Entry**
-   - Navigate to `http://localhost:3000/settings`.
-   - On initial page load or when switching presets (OpenRouter, OmniRoute, Ollama /v1), verify that the model list is automatically populated and displayed in a selectable dropdown.
-   - Click **Save Settings** without manually typing custom model names or IDs.
-   - Verify that settings save successfully and display the green confirmation toast (`Settings saved and encrypted in database!`).
+### Step 3: Verify Visual Footage & Final Video
+1. Once the pipeline completes, open the generated video on the project page or play `storage/projects/<project_id>/composition.mp4`.
+2. Confirm:
+   - **Real moving video footage / Ken Burns animated visuals** play across all scenes.
+   - **Voiceover narration** is crisp and synchronized.
+   - **Kinetic subtitles** are animated and legible over the visual backdrop.
+   - **Ambient background music** auto-ducks during spoken narration.

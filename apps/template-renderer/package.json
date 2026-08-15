@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "nodemon --watch src --ext ts --exec ts-node src/render-server.ts",
+    "dev": "ts-node run_renderer.ts",
     "build": "tsc",
     "start": "node dist/render-server.js",
     "lint": "eslint \"src/**/*.ts\"",

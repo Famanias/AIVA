@@ -9,20 +9,21 @@ import os from 'os'
 import fs from 'fs'
 
 export class RemotionBackend implements IRenderBackend {
-  private bundleLocation: string | null = null
+  private bundlePromise: Promise<string> | null = null
 
   private async getBundle() {
-    if (!this.bundleLocation) {
+    if (!this.bundlePromise) {
       const startBundle = Date.now()
-      this.bundleLocation = await bundle({
-        // In a real app this points to the Remotion Root.
+      this.bundlePromise = bundle({
         entryPoint: path.resolve(__dirname, '../templates/index.ts'),
         webpackOverride: (config) => config,
         ignoreRegisterRootWarning: true,
+      }).then((loc) => {
+        console.log(`[RemotionBackend] Bundled in ${Date.now() - startBundle}ms to ${loc}`)
+        return loc
       })
-      console.log(`[RemotionBackend] Bundled in ${Date.now() - startBundle}ms to ${this.bundleLocation}`)
     }
-    return this.bundleLocation
+    return this.bundlePromise
   }
 
   async render(
@@ -51,31 +52,39 @@ export class RemotionBackend implements IRenderBackend {
       fs.mkdirSync(outDir, { recursive: true })
     }
 
+    const isH264 = job.config.codec === 'h264'
+    const ext = isH264 ? 'mp4' : 'webm'
     const outputPath = path.resolve(
       outDir,
-      `${job.id}_${template.id}_${Date.now()}.webm`
+      `${job.id}_${template.id}_${Date.now()}.${ext}`
     )
 
     const renderStart = Date.now()
+    const targetDurationInFrames = Math.max(1, composition.totalDurationInFrames)
 
     await renderMedia({
       composition: {
         ...remotionComposition,
+        durationInFrames: targetDurationInFrames,
         width: job.config.width,
         height: job.config.height,
-        fps: job.config.fps
+        fps: job.config.fps,
       },
       serveUrl,
-      codec: 'vp9',
-      pixelFormat: 'yuva420p',
-      imageFormat: 'png',
+      codec: job.config.codec || 'h264',
+      pixelFormat: isH264 ? 'yuv420p' : 'yuva420p',
+      imageFormat: isH264 ? 'jpeg' : 'png',
       outputLocation: outputPath,
       inputProps,
-      concurrency: job.config.maxConcurrency
+      concurrency: job.config.maxConcurrency || Math.min(4, os.cpus().length),
+      chromiumOptions: {
+        disableWebSecurity: true,
+        ignoreCertificateErrors: true,
+      },
     })
 
     const renderDurationMs = Date.now() - renderStart
-    const fpsAchieved = composition.totalDurationInFrames / (renderDurationMs / 1000)
+    const fpsAchieved = targetDurationInFrames / (Math.max(1, renderDurationMs) / 1000)
 
     let fileSizeBytes = 0
     if (fs.existsSync(outputPath)) {
@@ -84,10 +93,10 @@ export class RemotionBackend implements IRenderBackend {
 
     return {
       outputs: {
-        video: outputPath
+        video: outputPath,
       },
-      duration: composition.totalDurationInFrames / composition.fps,
-      frameCount: composition.totalDurationInFrames,
+      duration: targetDurationInFrames / composition.fps,
+      frameCount: targetDurationInFrames,
       fps: composition.fps,
       renderTimeMs: Date.now() - startTime,
       template: template.id,
@@ -95,19 +104,19 @@ export class RemotionBackend implements IRenderBackend {
       metrics: {
         infrastructure: {
           chromiumStartupMs,
-          browserReuse: false // Remotion handles this internally unless we use custom browser
+          browserReuse: false,
         },
         rendering: {
-          frameCount: composition.totalDurationInFrames,
+          fpsAchieved,
+          frameCount: targetDurationInFrames,
           renderDurationMs,
-          fpsAchieved
         },
         output: {
           fileSizeBytes,
-          resolution: `${composition.width}x${composition.height}`,
-          codec: job.config.codec
-        }
-      }
+          resolution: `${job.config.width}x${job.config.height}`,
+          codec: job.config.codec || 'h264',
+        },
+      },
     }
   }
 }

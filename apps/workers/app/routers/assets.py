@@ -42,6 +42,10 @@ async def resolve_scene(scene: Dict[str, Any], config: AssetConfig) -> Dict[str,
     # We do not mutate the incoming dict directly for safety, we return a merged copy
     new_scene = scene.copy()
     new_scene["asset_manifest"] = manifest.dict()
+    if candidate and candidate.reference:
+        new_scene["assetUrl"] = candidate.reference.storage_key
+        new_scene["asset_url"] = candidate.reference.storage_key
+        new_scene["asset_ref"] = candidate.reference.dict()
     return new_scene
 
 @router.post("/resolve")

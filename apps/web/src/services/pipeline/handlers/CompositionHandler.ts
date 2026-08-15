@@ -23,14 +23,27 @@ export class CompositionHandler extends BaseHandler {
     const assets = state.assets || stateAny['06_assets'] || {}
 
     const rawBgTracks = assets.background_tracks || (Array.isArray(scenes) ? scenes
-      .filter((s: any) => s.asset_manifest?.background?.storage_key)
-      .map((s: any) => ({
-        id: String(s.id || s.sequence_number),
-        type: 'video',
-        storage_key: s.asset_manifest.background.storage_key,
-        duration: s.duration || 4.5,
-        mime_type: 'video/mp4'
-      })) : [])
+      .map((s: any, idx: number) => {
+        const bgRef = s.asset_manifest?.asset_slots?.background || s.asset_manifest?.background || s.assetRef || s.asset_ref
+        const storageKey = bgRef?.storage_key || bgRef?.storageKey || s.assetUrl || s.asset_url || ''
+        const mimeType = bgRef?.mime_type || bgRef?.mimeType || (typeof storageKey === 'string' && (storageKey.endsWith('.jpg') || storageKey.endsWith('.jpeg') || storageKey.endsWith('.png')) ? 'image/jpeg' : 'video/mp4')
+        const isImage = typeof mimeType === 'string' && mimeType.startsWith('image/')
+        
+        const seq = s.sequence_number || idx + 1
+        const sceneVo = Array.isArray(voice.voiceovers) ? voice.voiceovers.find((v: any) => v.sequence_number === seq) : null
+        const sceneDuration = sceneVo?.duration_sec || sceneVo?.duration || s.duration || 4.5
+
+        if (!storageKey) return null
+
+        return {
+          id: String(s.id || seq),
+          type: isImage ? 'image' : 'video',
+          storage_key: storageKey,
+          duration: sceneDuration,
+          mime_type: mimeType
+        }
+      })
+      .filter(Boolean) : [])
 
     const bgTracks = rawBgTracks.map((t: any) => ({
       ...t,

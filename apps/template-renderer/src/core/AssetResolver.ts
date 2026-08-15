@@ -1,31 +1,43 @@
+import path from 'path'
+import fs from 'fs'
 import { CompositionModel } from '../types/CompositionModel'
 
 /**
  * Resolves abstract asset URLs into absolute, preloaded paths 
- * ready for the rendering backend. Handles caching and missing assets.
+ * ready for the rendering backend. Converts local image files to base64 Data URIs
+ * so Chromium renders them instantly without cross-origin/file protocol restrictions.
  */
 export class AssetResolver {
   
-  /**
-   * Processes the composition model to ensure all assets are available locally.
-   * Modifies the model in-place (or returns a cloned mapped model) with absolute paths.
-   */
   static async resolve(composition: CompositionModel): Promise<CompositionModel> {
-    // Clone to maintain immutability of the incoming object if needed, 
-    // or just return a mapped version. We'll return a deeply mapped copy.
-    
     const resolvedScenes = await Promise.all(
       composition.scenes.map(async (scene) => {
         let resolvedUrl = scene.assetUrl
 
         if (resolvedUrl) {
-          // If the URL is external (HTTP), we would ideally download and cache it here.
-          // For P1, we assume the asset is either an absolute path or a working public URL.
-          if (resolvedUrl.startsWith('http')) {
-            // Future: await downloadToLocalCache(resolvedUrl)
-            // resolvedUrl = localPath
-          } else if (!resolvedUrl.startsWith('/')) {
-            // Missing asset detection
+          const isHttp = resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')
+          const isDataUri = resolvedUrl.startsWith('data:')
+          const isWindowsAbs = /^[a-zA-Z]:[\\/]/.test(resolvedUrl)
+          const isUnixAbs = resolvedUrl.startsWith('/')
+          const isLocalAbs = path.isAbsolute(resolvedUrl) || isWindowsAbs || isUnixAbs
+
+          if (!isHttp && !isDataUri && isLocalAbs && fs.existsSync(resolvedUrl)) {
+            const ext = path.extname(resolvedUrl).toLowerCase()
+            const mimeTypes: Record<string, string> = {
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.png': 'image/png',
+              '.webp': 'image/webp',
+              '.mp4': 'video/mp4',
+              '.webm': 'video/webm'
+            }
+
+            const mime = mimeTypes[ext]
+            if (mime) {
+              const fileBuffer = fs.readFileSync(resolvedUrl)
+              resolvedUrl = `data:${mime};base64,${fileBuffer.toString('base64')}`
+            }
+          } else if (!isHttp && !isDataUri && !isLocalAbs) {
             throw new Error(`Invalid asset reference for scene ${scene.id}: ${resolvedUrl}`)
           }
         }
@@ -34,14 +46,8 @@ export class AssetResolver {
       })
     )
 
-    let resolvedAudioUrl = composition.audioUrl
-    if (resolvedAudioUrl && resolvedAudioUrl.startsWith('http')) {
-       // Future: await downloadToLocalCache(resolvedAudioUrl)
-    }
-
     return {
       ...composition,
-      audioUrl: resolvedAudioUrl,
       scenes: resolvedScenes
     }
   }

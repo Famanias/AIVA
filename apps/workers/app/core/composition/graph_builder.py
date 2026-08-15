@@ -47,14 +47,17 @@ class FilterGraphBuilder:
         
         # If we have multiple backgrounds, we scale and concatenate them
         if len(model.background_tracks) > 1:
-            for i in range(len(model.background_tracks)):
+            for i, bg in enumerate(model.background_tracks):
                 idx = bg_idx_start + i
-                filters.append(f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1[v_scaled_{i}]")
+                dur = bg.duration or 4.5
+                filters.append(f"[{idx}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,trim=duration={dur},setpts=PTS-STARTPTS[v_scaled_{i}]")
             concat_inputs = "".join([f"[v_scaled_{i}]" for i in range(len(model.background_tracks))])
             filters.append(f"{concat_inputs}concat=n={len(model.background_tracks)}:v=1:a=0[bg_concat]")
             current_bg = "[bg_concat]"
         elif len(model.background_tracks) == 1:
-            filters.append(f"[{bg_idx_start}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1[bg_scaled]")
+            bg = model.background_tracks[0]
+            dur = bg.duration or 4.5
+            filters.append(f"[{bg_idx_start}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,trim=duration={dur},setpts=PTS-STARTPTS[bg_scaled]")
             current_bg = "[bg_scaled]"
         else:
             current_bg = ""

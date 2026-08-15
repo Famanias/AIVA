@@ -20,7 +20,14 @@ export class LifecycleService {
 
   static async getLifecycleState(jobId: string): Promise<{ isCancelled: boolean; isPaused: boolean }> {
     const now = Date.now()
-    const cached = this.cache.get(jobId)
+    const cleanJobId = typeof jobId === 'string' && jobId.includes('_') ? jobId.split('_')[0] : jobId
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+    if (!cleanJobId || !uuidRegex.test(cleanJobId)) {
+      return { isCancelled: false, isPaused: false }
+    }
+
+    const cached = this.cache.get(cleanJobId)
 
     if (cached && cached.expiresAt > now) {
       return { isCancelled: cached.isCancelled, isPaused: cached.isPaused }
@@ -29,14 +36,14 @@ export class LifecycleService {
     try {
       const res = await query(
         `SELECT cancel_requested_at, pause_requested_at FROM public.jobs WHERE id = $1 LIMIT 1`,
-        [jobId]
+        [cleanJobId]
       )
 
       const jobData = res.rows[0]
       const isCancelled = jobData && jobData.cancel_requested_at != null
       const isPaused = jobData && jobData.pause_requested_at != null
 
-      this.cache.set(jobId, { isCancelled: !!isCancelled, isPaused: !!isPaused, expiresAt: now + this.CACHE_TTL_MS })
+      this.cache.set(cleanJobId, { isCancelled: !!isCancelled, isPaused: !!isPaused, expiresAt: now + this.CACHE_TTL_MS })
       
       return { isCancelled: !!isCancelled, isPaused: !!isPaused }
     } catch (err: any) {
