@@ -1,9 +1,23 @@
 import os
+import ssl
+import certifi
 import urllib.parse
 import random
 import aiohttp
 from typing import List
 from app.models.asset import RankedCandidate
+
+
+def _get_ssl_context() -> ssl.SSLContext:
+    try:
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
+
+def _get_connector() -> aiohttp.TCPConnector:
+    return aiohttp.TCPConnector(ssl=_get_ssl_context())
+
 
 class IAssetProvider:
     @property
@@ -16,19 +30,23 @@ class IAssetProvider:
     async def generate(self, prompt: str) -> List[RankedCandidate]:
         raise NotImplementedError
 
+
 class PexelsProvider(IAssetProvider):
     @property
     def name(self) -> str:
         return "pexels"
 
     async def search(self, query: str, limit: int = 25) -> List[RankedCandidate]:
+        from app.core.config import get_settings
         from app.core.db import get_app_setting
-        api_key = (await get_app_setting("pexels_api_key")) or os.getenv("PEXELS_API_KEY")
+
+        settings = get_settings()
+        api_key = (await get_app_setting("pexels_api_key")) or settings.pexels_api_key or os.getenv("PEXELS_API_KEY")
         if not api_key:
             return []
 
         candidates = []
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=_get_connector()) as session:
             try:
                 headers = {"Authorization": api_key}
                 # 1. Search Videos (Portrait first)
@@ -36,7 +54,7 @@ class PexelsProvider(IAssetProvider):
                     "https://api.pexels.com/videos/search",
                     params={"query": query, "per_page": limit, "orientation": "portrait"},
                     headers=headers,
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=12)
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
@@ -71,7 +89,7 @@ class PexelsProvider(IAssetProvider):
                         "https://api.pexels.com/v1/search",
                         params={"query": query, "per_page": limit, "orientation": "portrait"},
                         headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=10)
+                        timeout=aiohttp.ClientTimeout(total=12)
                     ) as resp:
                         if resp.status == 200:
                             data = await resp.json()
@@ -109,19 +127,22 @@ class PixabayProvider(IAssetProvider):
         return "pixabay"
 
     async def search(self, query: str, limit: int = 25) -> List[RankedCandidate]:
+        from app.core.config import get_settings
         from app.core.db import get_app_setting
-        api_key = (await get_app_setting("pixabay_api_key")) or os.getenv("PIXABAY_API_KEY")
+
+        settings = get_settings()
+        api_key = (await get_app_setting("pixabay_api_key")) or settings.pixabay_api_key or os.getenv("PIXABAY_API_KEY")
         if not api_key:
             return []
 
         candidates = []
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(connector=_get_connector()) as session:
             try:
-                # Search Pixabay Videos
+                # 1. Search Pixabay Videos
                 async with session.get(
                     "https://pixabay.com/api/videos/",
                     params={"key": api_key, "q": query, "per_page": limit, "video_type": "all"},
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=12)
                 ) as resp:
                     if resp.status == 200:
                         data = await resp.json()
@@ -144,6 +165,34 @@ class PixabayProvider(IAssetProvider):
                                         }
                                     )
                                 )
+
+                # 2. Fallback to Pixabay Photos
+                if not candidates:
+                    async with session.get(
+                        "https://pixabay.com/api/",
+                        params={"key": api_key, "q": query, "per_page": limit, "image_type": "photo", "orientation": "vertical"},
+                        timeout=aiohttp.ClientTimeout(total=12)
+                    ) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            for hit in data.get("hits", []):
+                                photo_url = hit.get("largeImageURL") or hit.get("webformatURL")
+                                if photo_url:
+                                    candidates.append(
+                                        RankedCandidate(
+                                            score=0.0,
+                                            reason="Pixabay Photo",
+                                            provider=self.name,
+                                            raw_metadata={
+                                                "url": photo_url,
+                                                "mime_type": "image/jpeg",
+                                                "description": hit.get("tags", query),
+                                                "duration": 5,
+                                                "width": hit.get("imageWidth", 1080),
+                                                "height": hit.get("imageHeight", 1920)
+                                            }
+                                        )
+                                    )
             except Exception as e:
                 print(f"[PixabayProvider] Search failed: {e}")
 
@@ -211,3 +260,4 @@ class SDXLProvider(IAssetProvider):
                 }
             )
         ]
+

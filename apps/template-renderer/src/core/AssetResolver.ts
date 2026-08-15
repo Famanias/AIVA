@@ -23,23 +23,24 @@ export class AssetResolver {
 
           if (!isHttp && !isDataUri && isLocalAbs && fs.existsSync(resolvedUrl)) {
             const ext = path.extname(resolvedUrl).toLowerCase()
-            const mimeTypes: Record<string, string> = {
+            const imageMimes: Record<string, string> = {
               '.jpg': 'image/jpeg',
               '.jpeg': 'image/jpeg',
               '.png': 'image/png',
               '.webp': 'image/webp',
-              '.mp4': 'video/mp4',
-              '.webm': 'video/webm'
             }
 
-            const mime = mimeTypes[ext]
-            if (mime) {
+            if (imageMimes[ext]) {
               const fileBuffer = fs.readFileSync(resolvedUrl)
-              resolvedUrl = `data:${mime};base64,${fileBuffer.toString('base64')}`
+              resolvedUrl = `data:${imageMimes[ext]};base64,${fileBuffer.toString('base64')}`
+            } else if (ext === '.mp4' || ext === '.webm') {
+              const normalized = resolvedUrl.replace(/\\/g, '/')
+              resolvedUrl = `file:///${normalized.startsWith('/') ? normalized.slice(1) : normalized}`
             }
           } else if (!isHttp && !isDataUri && !isLocalAbs) {
             throw new Error(`Invalid asset reference for scene ${scene.id}: ${resolvedUrl}`)
           }
+
         }
 
         return { ...scene, assetUrl: resolvedUrl }

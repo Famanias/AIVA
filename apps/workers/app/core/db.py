@@ -14,13 +14,14 @@ def get_database_url() -> str:
     if os.getenv("DATABASE_URL"):
         return os.getenv("DATABASE_URL")
     
-    host = os.getenv("POSTGRES_HOST", "localhost")
+    host = os.getenv("POSTGRES_HOST", "127.0.0.1")
     port = os.getenv("POSTGRES_PORT", "5432")
     db = os.getenv("POSTGRES_DB", "aiva")
     user = os.getenv("POSTGRES_USER", "postgres")
     password = os.getenv("POSTGRES_PASSWORD", "postgres")
     
     return f"postgresql://{user}:{password}@{host}:{port}/{db}"
+
 
 
 async def get_db_pool() -> asyncpg.Pool:

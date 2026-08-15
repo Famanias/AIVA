@@ -67,12 +67,22 @@ class FilterGraphBuilder:
 
         # Overlay Remotion visual layer onto background
         if overlay_idx >= 0 and current_bg:
-            filters.append(f"{current_bg}[{overlay_idx}:v]overlay=0:0:eof_action=pass[v_mixed]")
-            video_out_pad = "[v_mixed]"
+            storage_key = (model.overlay_track.storage_key or "").lower()
+            mime = (model.overlay_track.mime_type or "").lower()
+            # MP4 files never contain alpha channels; only true WebM/alpha overlays can be composited on top
+            is_alpha_overlay = (storage_key.endswith(".webm") or "webm" in mime) and not storage_key.endswith(".mp4") and model.overlay_track.metadata.get("has_alpha", True)
+            if is_alpha_overlay:
+                filters.append(f"{current_bg}[{overlay_idx}:v]overlay=0:0:eof_action=pass[v_mixed]")
+                video_out_pad = "[v_mixed]"
+            else:
+                # If background_tracks are provided with real media, prioritize background footage
+                video_out_pad = current_bg
         elif overlay_idx >= 0:
             video_out_pad = f"[{overlay_idx}:v]"
         elif current_bg:
             video_out_pad = current_bg
+
+
             
         # Subtitle Burn-in
         if subtitle_path and video_out_pad:

@@ -24,17 +24,24 @@ async def resolve_scene(scene: Dict[str, Any], config: AssetConfig) -> Dict[str,
     scene_text = scene.get("text") or scene.get("scriptSegment") or scene.get("script_segment", "")
     visual_type = str(scene.get("visual_type") or scene.get("visualType") or "broll").lower()
     broll_keywords = scene.get("brollSearchKeywords") or scene.get("broll_search_keywords") or scene.get("assetQuery")
+    if isinstance(broll_keywords, list):
+        broll_keywords = " ".join(str(k) for k in broll_keywords)
     visual_prompt = scene.get("visualPrompt") or scene.get("visual_prompt") or ""
+    if isinstance(visual_prompt, list):
+        visual_prompt = " ".join(str(k) for k in visual_prompt)
     query = broll_keywords or visual_prompt or scene_text
+    if isinstance(query, list):
+        query = " ".join(str(k) for k in query)
 
     # 2. Strategy Execution with dynamic visual type routing
     candidate = await asset_strategy.resolve_for_scene(
-        scene_text=scene_text,
-        query=query,
+        scene_text=str(scene_text),
+        query=str(query),
         config=config,
         visual_type=visual_type,
-        visual_prompt=visual_prompt
+        visual_prompt=str(visual_prompt)
     )
+
 
 
     # 3. Build Immutable Manifest

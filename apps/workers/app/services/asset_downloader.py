@@ -1,6 +1,16 @@
 import os
+import ssl
+import certifi
 import aiohttp
 import tempfile
+
+
+def _get_ssl_context() -> ssl.SSLContext:
+    try:
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return ssl.create_default_context()
+
 
 class AssetDownloader:
     """
@@ -47,7 +57,8 @@ class AssetDownloader:
 
         print(f"[AssetDownloader] Downloading {url} to {temp_path}")
         
-        async with aiohttp.ClientSession() as session:
+        connector = aiohttp.TCPConnector(ssl=_get_ssl_context())
+        async with aiohttp.ClientSession(connector=connector) as session:
             async with session.get(url) as resp:
                 if resp.status != 200:
                     raise Exception(f"Failed to download asset: HTTP {resp.status}")
@@ -58,3 +69,4 @@ class AssetDownloader:
                         f.write(chunk)
                         
         return temp_path
+

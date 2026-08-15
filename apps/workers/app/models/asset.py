@@ -26,7 +26,8 @@ class AssetManifest(BaseModel):
     alternatives: List[RankedCandidate] = Field(default_factory=dict)
 
 class AssetConfig(BaseModel):
-    semantic_threshold: float = 0.75
+    semantic_threshold: float = 0.20
     max_candidates: int = 25
     fallback_enabled: bool = True
     concurrency_limit: int = 5
+

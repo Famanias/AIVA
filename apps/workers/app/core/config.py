@@ -7,16 +7,20 @@ See RULES Rule 7 — Zero Hardcoding.
 from functools import lru_cache
 from typing import Literal
 
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=("../../.env", ".env"),
+        env_file=(str(_ROOT_ENV), "../.env", "../../.env", ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
+
 
     # -------------------------------------------------------------------------
     # Application

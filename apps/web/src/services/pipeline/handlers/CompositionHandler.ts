@@ -98,14 +98,15 @@ export class CompositionHandler extends BaseHandler {
       })
     }
 
-    const totalDuration = masterDuration
+    const style = (context.project as any)?.video_style || 'documentary'
+    const isCharacterOverlay = style === 'stickman' || style === 'stickman_animation'
 
     // 2. Map PipelineState to CompositionModel contract
     const compositionModel = {
       trace_id: context.job.id,
       project_id: context.project.id,
       job_id: context.job.id,
-      overlay_track: state.render?.outputUrl ? {
+      overlay_track: (isCharacterOverlay && state.render?.outputUrl) ? {
         id: 'remotion_overlay',
         type: 'video',
         storage_key: state.render.outputUrl,
@@ -113,6 +114,7 @@ export class CompositionHandler extends BaseHandler {
         mime_type: 'video/webm'
       } : null,
       background_tracks: bgTracks,
+
       voice_track: voiceUrl ? {
         id: 'voice_main',
         type: 'audio',

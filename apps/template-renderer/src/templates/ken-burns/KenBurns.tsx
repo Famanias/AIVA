@@ -23,13 +23,19 @@ export const KenBurns: React.FC<{ model?: any; params?: any; wordTimings?: any[]
     assetUrl = `file:///${assetUrl.replace(/\\/g, '/')}`;
   }
 
-  const isVideo = typeof assetUrl === 'string' && (
-    assetUrl.endsWith('.mp4') || assetUrl.endsWith('.webm') || assetUrl.includes('/video/')
-  );
   const isImage = typeof assetUrl === 'string' && (
+    assetUrl.startsWith('data:image/') ||
     assetUrl.endsWith('.jpg') || assetUrl.endsWith('.jpeg') || assetUrl.endsWith('.png') ||
-    assetUrl.endsWith('.webp') || assetUrl.includes('pollinations.ai') || assetUrl.includes('pexels.com/photos')
+    assetUrl.endsWith('.webp') || assetUrl.includes('pollinations.ai') || assetUrl.includes('pexels.com/photos') ||
+    assetUrl.includes('pixabay.com/get/')
   );
+  const isVideo = typeof assetUrl === 'string' && (
+    assetUrl.startsWith('data:video/') ||
+    assetUrl.endsWith('.mp4') || assetUrl.endsWith('.webm') || assetUrl.includes('/video/') ||
+    assetUrl.includes('videos.pexels.com') || assetUrl.includes('cdn.pixabay.com') ||
+    (!isImage && (assetUrl.startsWith('http') || assetUrl.startsWith('file:///')))
+  );
+
 
   // Smooth cinematic pan & zoom spring animation per scene
   const progress = spring({
