@@ -173,8 +173,11 @@ async def test_handle_voiceover_stage_multi_scene_concatenation():
             assert res["master_audio_url"] is not None
             assert os.path.exists(res["master_audio_url"])
             assert len(res["voiceovers"]) == 2
+            assert "master_duration_sec" in res
+            assert res["master_duration_sec"] > 0
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 @pytest.mark.asyncio
 async def test_fallback_asset_provider():
@@ -214,5 +217,61 @@ def test_filter_graph_synthetic_fallback_when_backgrounds_empty():
     inputs, filter_complex, v_pad, a_pad = FilterGraphBuilder.build(model)
     assert "bg_synthetic" in filter_complex
     assert "eof_action=pass" in filter_complex
+
+@pytest.mark.asyncio
+async def test_asset_downloader_local_and_file_urls():
+    from app.services.asset_downloader import AssetDownloader
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+        tmp.write(b"dummy image data")
+        tmp_path = tmp.name
+
+    try:
+        # Test raw path
+        p1 = await AssetDownloader.download(tmp_path)
+        assert os.path.exists(p1)
+        assert os.path.getsize(p1) > 0
+
+        # Test file:// URL
+        file_url = f"file:///{tmp_path.replace(os.sep, '/')}"
+        p2 = await AssetDownloader.download(file_url)
+        assert os.path.exists(p2)
+        assert os.path.getsize(p2) > 0
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+def test_dynamic_ass_subtitle_generation():
+    word_timings = [
+        {"word": "Dynamic", "start": 0.0, "end": 1.0},
+        {"word": "Subtitles", "start": 1.0, "end": 2.0}
+    ]
+    # Test vertical 9:16 (1080x1920)
+    ass_916 = SubtitleGenerator.generate(word_timings, "test_job_916", width=1080, height=1920, aspect_ratio="9:16")
+    try:
+        assert os.path.exists(ass_916)
+        with open(ass_916, "r", encoding="utf-8") as f:
+            content = f.read()
+            assert "PlayResX: 1080" in content
+            assert "PlayResY: 1920" in content
+            assert ",280,1" in content # MarginV = 280
+    finally:
+        if os.path.exists(ass_916):
+            os.remove(ass_916)
+
+    # Test horizontal 16:9 (1920x1080)
+    ass_169 = SubtitleGenerator.generate(word_timings, "test_job_169", width=1920, height=1080, aspect_ratio="16:9")
+    try:
+        assert os.path.exists(ass_169)
+        with open(ass_169, "r", encoding="utf-8") as f:
+            content = f.read()
+            assert "PlayResX: 1920" in content
+            assert "PlayResY: 1080" in content
+            assert ",90,1" in content # MarginV = 90
+    finally:
+        if os.path.exists(ass_169):
+            os.remove(ass_169)
+
+
 
 

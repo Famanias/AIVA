@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, useVideoConfig, useCurrentFrame, interpolate, spring } from 'remotion';
+import { AbsoluteFill, useVideoConfig, useCurrentFrame, interpolate, spring, Img, Video } from 'remotion';
 
 interface CharacterRigProps {
   model?: any;
@@ -25,6 +25,21 @@ export const CharacterRig: React.FC<CharacterRigProps> = ({ model, params = {} }
   else if (rawAction.includes('walk')) action = 'walk';
   else if (rawAction.includes('shrug')) action = 'shrug';
   else if (rawAction.includes('idle') || rawAction.includes('stand')) action = 'idle';
+
+  // Resolve background asset for self-contained rendering
+  const rawAssetUrl = currentScene?.assetUrl || model?.scenes?.[0]?.assetUrl || params?.assetUrl || params?.asset_url || '';
+  let assetUrl = rawAssetUrl;
+  if (typeof assetUrl === 'string' && assetUrl.length > 0 && !assetUrl.startsWith('http://') && !assetUrl.startsWith('https://') && !assetUrl.startsWith('data:') && !assetUrl.startsWith('file:///')) {
+    assetUrl = `file:///${assetUrl.replace(/\\/g, '/')}`;
+  }
+
+  const isVideo = typeof assetUrl === 'string' && (
+    assetUrl.endsWith('.mp4') || assetUrl.endsWith('.webm') || assetUrl.includes('/video/')
+  );
+  const isImage = typeof assetUrl === 'string' && (
+    assetUrl.endsWith('.jpg') || assetUrl.endsWith('.jpeg') || assetUrl.endsWith('.png') ||
+    assetUrl.endsWith('.webp') || assetUrl.startsWith('data:image/') || assetUrl.includes('pollinations.ai') || assetUrl.includes('pexels.com/photos')
+  );
 
   // 2. Physics & Motion (Breathing, Bobbing, Gestures)
   const bounce = Math.sin(sceneFrame * 0.18) * 8;
@@ -85,11 +100,47 @@ export const CharacterRig: React.FC<CharacterRigProps> = ({ model, params = {} }
   const rigBottom = height * 0.12;
 
   return (
-    <AbsoluteFill style={{ pointerEvents: 'none', backgroundColor: 'transparent' }}>
+    <AbsoluteFill style={{ backgroundColor: '#0a0e1a', overflow: 'hidden' }}>
+      {/* Background Media / Ambient Layer */}
+      {isVideo && assetUrl ? (
+        <AbsoluteFill style={{ zIndex: 0 }}>
+          <Video
+            src={assetUrl}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            muted
+            loop
+          />
+        </AbsoluteFill>
+      ) : isImage && assetUrl ? (
+        <AbsoluteFill style={{ zIndex: 0 }}>
+          <Img
+            src={assetUrl}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        </AbsoluteFill>
+      ) : (
+        <AbsoluteFill
+          style={{
+            zIndex: 0,
+            background: 'linear-gradient(135deg, #090d16 0%, #111827 50%, #0f172a 100%)',
+          }}
+        />
+      )}
+
+      {/* Subtle Vignette for Contrast */}
+      <AbsoluteFill
+        style={{
+          zIndex: 1,
+          background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.4) 100%)',
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* Stickman Vector Character Rig */}
       <div
         style={{
           position: 'absolute',
+          zIndex: 2,
           bottom: `${rigBottom}px`,
           left: '50%',
           transform: `translateX(-50%) translateY(${bounce}px) scale(${rigScale})`,
@@ -98,6 +149,7 @@ export const CharacterRig: React.FC<CharacterRigProps> = ({ model, params = {} }
           filter: 'drop-shadow(0px 8px 16px rgba(0,0,0,0.65))',
         }}
       >
+
         <svg viewBox="0 0 400 500" width="100%" height="100%" style={{ overflow: 'visible' }}>
           <defs>
             <filter id="stickGlow" x="-20%" y="-20%" width="140%" height="140%">

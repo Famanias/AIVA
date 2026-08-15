@@ -23,7 +23,10 @@ export interface PipelineIR {
       end: number
     }>
     audioUrl?: string
+    masterDurationSec?: number
+    master_duration_sec?: number
   }
+
   scenes: Array<{
     id: string
     text: string

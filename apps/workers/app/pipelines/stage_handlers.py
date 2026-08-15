@@ -190,16 +190,23 @@ async def handle_voiceover_stage(
         project_storage_dir = get_project_storage_dir(valid_project_id)
         master_voice_file = os.path.join(project_storage_dir, "master_voice.mp3")
 
+        master_duration_sec = 0.0
         try:
             audio_files = [o.audio_url for o in outputs if o.audio_url]
             master_audio_url = concat_audio_files(audio_files, master_voice_file)
-            logger.info("master_voice_concatenated", master_path=master_audio_url, scenes_count=len(outputs))
+            from app.core.audio_utils import get_audio_duration
+            master_duration_sec = get_audio_duration(master_audio_url)
+            if master_duration_sec <= 0.0:
+                master_duration_sec = sum(float(o.duration_sec or 0.0) for o in outputs)
+            logger.info("master_voice_concatenated", master_path=master_audio_url, duration=master_duration_sec, scenes_count=len(outputs))
         except Exception as e:
             logger.warning("failed_to_concatenate_master_voice", error=str(e))
             master_audio_url = outputs[0].audio_url
+            master_duration_sec = sum(float(o.duration_sec or 0.0) for o in outputs)
 
     result = {
         "master_audio_url": master_audio_url,
+        "master_duration_sec": round(master_duration_sec, 3),
         "voiceovers": [
             {
                 "sequence_number": o.scene_number,
@@ -210,6 +217,7 @@ async def handle_voiceover_stage(
             for o in outputs
         ]
     }
+
 
     try:
         artifact_repo.save_stage_artifact(job_id, "04_voice", result)

@@ -22,6 +22,13 @@ export class CompositionHandler extends BaseHandler {
     const voice = state.voice || stateAny['04_voice'] || {}
     const assets = state.assets || stateAny['06_assets'] || {}
 
+    const voiceovers = voice.voiceovers || voice.scene_voiceovers || []
+    const masterDuration = Number(
+      voice.master_duration_sec || 
+      (Array.isArray(voiceovers) && voiceovers.length > 0 ? voiceovers.reduce((acc: number, v: any) => acc + Number(v.duration_sec || 0), 0) : 
+      (Array.isArray(scenes) && scenes.length > 0 ? scenes.reduce((acc: number, s: any) => acc + Number(s.duration || 4.5), 0) : 10.0))
+    )
+
     const rawBgTracks = assets.background_tracks || (Array.isArray(scenes) ? scenes
       .map((s: any, idx: number) => {
         const bgRef = s.asset_manifest?.asset_slots?.background || s.asset_manifest?.background || s.assetRef || s.asset_ref
@@ -30,8 +37,8 @@ export class CompositionHandler extends BaseHandler {
         const isImage = typeof mimeType === 'string' && mimeType.startsWith('image/')
         
         const seq = s.sequence_number || idx + 1
-        const sceneVo = Array.isArray(voice.voiceovers) ? voice.voiceovers.find((v: any) => v.sequence_number === seq) : null
-        const sceneDuration = sceneVo?.duration_sec || sceneVo?.duration || s.duration || 4.5
+        const sceneVo = Array.isArray(voiceovers) ? voiceovers.find((v: any) => v.sequence_number === seq) : null
+        const sceneDuration = Number(sceneVo?.duration_sec || s.duration || sceneVo?.duration || 4.5)
 
         if (!storageKey) return null
 
@@ -50,7 +57,7 @@ export class CompositionHandler extends BaseHandler {
       mime_type: t.mime_type || (t.type === 'image' ? 'image/jpeg' : 'video/mp4')
     }))
 
-    const voiceUrl = voice.master_audio_url || voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || null
+    const voiceUrl = voice.master_audio_url || voice.audioUrl || (Array.isArray(voiceovers) && voiceovers[0]?.audio_url) || null
 
     const profile = context.generationProfile || (context.state as any)?.generationProfile || (context.project as any)?.generation_profile || {}
     const aspectRatio = profile.aspect_ratio || profile.target_aspect_ratio || '9:16'
@@ -91,9 +98,7 @@ export class CompositionHandler extends BaseHandler {
       })
     }
 
-    const totalDuration = Array.isArray(scenes) && scenes.length > 0
-      ? scenes.reduce((acc: number, s: any) => acc + Number(s.duration || 4.5), 0)
-      : (bgTracks.length > 0 ? bgTracks.reduce((acc: number, t: any) => acc + Number(t.duration || 4.5), 0) : 10.0)
+    const totalDuration = masterDuration
 
     // 2. Map PipelineState to CompositionModel contract
     const compositionModel = {
@@ -112,7 +117,7 @@ export class CompositionHandler extends BaseHandler {
         id: 'voice_main',
         type: 'audio',
         storage_key: voiceUrl,
-        duration: 0,
+        duration: totalDuration,
         mime_type: 'audio/mp3'
       } : null,
       music_track: musicTrack,
@@ -130,6 +135,7 @@ export class CompositionHandler extends BaseHandler {
         fps: 30
       }
     }
+
     
     // 3. Dispatch
     const response = await workerGateway.execute<any>('/composition/composite', compositionModel, 15 * 60 * 1000)

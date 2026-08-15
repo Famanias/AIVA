@@ -66,3 +66,38 @@ def concat_audio_files(
                 os.remove(concat_list_file)
             except Exception:
                 pass
+
+
+def get_audio_duration(file_path: str) -> float:
+
+    """
+    Measures the exact audio duration in seconds using ffprobe.
+    Falls back to 0.0 if the file does not exist or probing fails.
+    """
+    if not file_path or not os.path.exists(file_path):
+        return 0.0
+
+    ffprobe_bin = shutil.which("ffprobe")
+    if not ffprobe_bin and os.name == "nt":
+        winget_path = os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin\ffprobe.exe")
+        if os.path.exists(winget_path):
+            ffprobe_bin = winget_path
+
+    if not ffprobe_bin:
+        ffprobe_bin = "ffprobe"
+
+    try:
+        cmd = [
+            ffprobe_bin,
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        dur = float(res.stdout.strip())
+        return round(dur, 3)
+    except Exception as e:
+        logger.warning("ffprobe_duration_measurement_failed", file=file_path, error=str(e))
+        return 0.0
+

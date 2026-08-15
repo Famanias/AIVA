@@ -102,14 +102,18 @@ class Encoder:
             cmd.extend(["-c:a", "aac", "-b:a", "192k"])
             
         # Total Duration Anchoring (prevents unbounded audio or truncated video)
-        total_duration = sum(t.duration for t in model.background_tracks if t.duration)
-        if total_duration <= 0 and model.overlay_track and model.overlay_track.duration:
-            total_duration = model.overlay_track.duration
-        if total_duration <= 0 and model.voice_track and model.voice_track.duration:
+        # Primary anchor is master voice track duration, falling back to overlay / background duration
+        total_duration = 0.0
+        if model.voice_track and model.voice_track.duration and model.voice_track.duration > 0:
             total_duration = model.voice_track.duration
+        elif model.overlay_track and model.overlay_track.duration and model.overlay_track.duration > 0:
+            total_duration = model.overlay_track.duration
+        elif model.background_tracks:
+            total_duration = sum(t.duration for t in model.background_tracks if t.duration)
 
         if total_duration > 0:
             cmd.extend(["-t", str(round(total_duration, 2))])
+
 
         cmd.append(output_path)
         

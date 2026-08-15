@@ -18,21 +18,27 @@ class AssetDownloader:
         temp_dir = os.path.join(tempfile.gettempdir(), "aiva_assets")
         os.makedirs(temp_dir, exist_ok=True)
         
-        # Simple extraction of filename, fallback to temp.mp4
-        filename = url.split("/")[-1].split("?")[0]
+        clean_url = url.replace("\\", "/")
+        raw_filename = clean_url.split("/")[-1].split("?")[0]
+        filename = "".join(c for c in raw_filename if c.isalnum() or c in "._-")
         if not filename:
             filename = "temp.mp4"
             
         temp_path = os.path.join(temp_dir, f"{os.urandom(8).hex()}_{filename}")
         
         # Handle local files directly
-        if url.startswith("file:///"):
-            local_path = url[8:]
-            if os.name == 'nt' and local_path.startswith('/') and len(local_path) > 2 and local_path[2] == ':':
-                local_path = local_path[1:]
-            if os.path.exists(local_path):
+        if url.startswith("file://"):
+            import urllib.parse
+            parsed_path = urllib.parse.unquote(url[7:])
+            if parsed_path.startswith('/') and os.name == 'nt' and len(parsed_path) > 2 and parsed_path[2] == ':':
+                parsed_path = parsed_path[1:]
+            elif parsed_path.startswith('//'):
+                parsed_path = parsed_path[1:]
+                if os.name == 'nt' and parsed_path.startswith('/') and len(parsed_path) > 2 and parsed_path[2] == ':':
+                    parsed_path = parsed_path[1:]
+            if os.path.exists(parsed_path):
                 import shutil
-                shutil.copy2(local_path, temp_path)
+                shutil.copy2(parsed_path, temp_path)
                 return temp_path
         elif os.path.exists(url):
             import shutil

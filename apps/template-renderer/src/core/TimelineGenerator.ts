@@ -25,10 +25,15 @@ export function generateTimeline(ir: PipelineIR, config: RenderConfig): Composit
     lastEndFrame = Math.max(lastEndFrame, endFrame)
   }
 
-  // Calculate scenes timeline based on scene duration or word timings
+  // Calculate scenes timeline based on master duration, scene durations, or word timings
   const scenes: Scene[] = []
   
-  let totalDurationInFrames = lastEndFrame > 0 ? lastEndFrame : 30 * fps // fallback to 30s
+  const masterDurationSec = Number(ir.voice.masterDurationSec || ir.voice.master_duration_sec || 0)
+  const masterDurationFrames = masterDurationSec > 0 ? Math.round(masterDurationSec * fps) : 0
+
+  let totalDurationInFrames = masterDurationFrames > 0 
+    ? masterDurationFrames 
+    : (lastEndFrame > 0 ? lastEndFrame : 30 * fps)
   
   if (ir.scenes.length > 0) {
     const hasExplicitDurations = ir.scenes.some(s => typeof s.duration === 'number' && s.duration > 0)
@@ -59,10 +64,13 @@ export function generateTimeline(ir: PipelineIR, config: RenderConfig): Composit
       currentStartFrame += durationInFrames
     })
 
-    if (hasExplicitDurations && currentStartFrame > 0) {
+    if (hasExplicitDurations && currentStartFrame > 0 && masterDurationFrames <= 0) {
       totalDurationInFrames = Math.max(totalDurationInFrames, currentStartFrame)
+    } else if (masterDurationFrames > 0) {
+      totalDurationInFrames = masterDurationFrames
     }
   }
+
 
   return {
     version: 1,

@@ -415,3 +415,88 @@ export interface VideoTrack {
   end: number;
   transition: string;
 }
+
+// =============================================================================
+// Canonical Pipeline Seam Contracts (Deep Modules)
+// =============================================================================
+
+export interface CanvasConfig {
+  width: number;
+  height: number;
+  aspectRatio: string;
+  fps: number;
+}
+
+export interface AssetRef {
+  id: string;
+  storage_key: string;
+  mime_type: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+  checksum?: string;
+  status?: string;
+  origin?: 'stock' | 'generated' | 'fallback' | string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AssetManifest {
+  asset_slots: {
+    background?: AssetRef;
+    [slot: string]: AssetRef | undefined;
+  };
+  alternatives: AssetRef[];
+}
+
+export interface SceneAssetData {
+  manifest: AssetManifest;
+}
+
+export interface VoiceoverScene {
+  sequence_number: number;
+  audio_url: string;
+  duration_sec: number;
+  word_timings: WordTiming[];
+}
+
+export interface VoiceState {
+  master_audio_url?: string;
+  master_duration_sec?: number;
+  voiceovers?: VoiceoverScene[];
+  scene_voiceovers?: VoiceoverScene[];
+  audioUrl?: string;
+  wordTimings?: WordTiming[];
+  word_timings?: WordTiming[];
+  subtitles?: SubtitleScene[];
+}
+
+export interface SubtitleScene {
+  sequence_number: number;
+  duration: number;
+  word_timings: WordTiming[];
+}
+
+export interface SubtitleState {
+  subtitles: SubtitleScene[];
+  global_word_timings: WordTiming[];
+}
+
+export interface SceneTimeline {
+  id: string;
+  startFrame: number;
+  durationInFrames: number;
+  assetUrl?: string;
+  transition?: string;
+  characterAction?: string;
+}
+
+export interface TimelineContract {
+  totalDurationSeconds: number;
+  totalDurationInFrames: number;
+  fps: number;
+  width: number;
+  height: number;
+  scenes: SceneTimeline[];
+  wordTimings: WordTiming[];
+}
+

@@ -11,15 +11,31 @@ class SubtitleGenerator:
     Never invokes FFmpeg directly.
     """
 
-    # Enhanced ASS header with high-contrast, center-bottom safe zone styling
-    ASS_HEADER = """[Script Info]
+    @staticmethod
+    def _build_ass_header(width: int = 1080, height: int = 1920, aspect_ratio: str = "9:16") -> str:
+        """
+        Dynamically calculates PlayResX, PlayResY, Fontsize, and MarginV
+        to ensure subtitles are crisp, centered, and within the safe zone.
+        """
+        if height >= width:
+            # Vertical / Square (9:16, 4:5, 1:1)
+            font_size = max(24, int(round(height * (72 / 1920))))
+            margin_v = int(round(height * (280 / 1920)))
+            margin_lr = int(round(width * (40 / 1080)))
+        else:
+            # Horizontal (16:9) e.g. 1920x1080
+            font_size = max(24, int(round(height * (54 / 1080))))
+            margin_v = int(round(height * (90 / 1080)))
+            margin_lr = int(round(width * (80 / 1920)))
+
+        return f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {width}
+PlayResY: {height}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Segoe UI,72,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,40,40,280,1
+Style: Default,Segoe UI,{font_size},&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,4,2,2,{margin_lr},{margin_lr},{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -84,7 +100,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         return chunks
 
     @staticmethod
-    def generate(word_timings: List[Dict[str, Any]], job_id: str) -> str:
+    def generate(
+        word_timings: List[Dict[str, Any]], 
+        job_id: str, 
+        width: int = 1080, 
+        height: int = 1920, 
+        aspect_ratio: str = "9:16"
+    ) -> str:
         if not word_timings:
             return ""
 
@@ -93,9 +115,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         
         out_path = os.path.join(temp_dir, f"{job_id}_subs.ass")
         chunks = SubtitleGenerator._chunk_words(word_timings)
+        header = SubtitleGenerator._build_ass_header(width, height, aspect_ratio)
 
         with open(out_path, "w", encoding="utf-8") as f:
-            f.write(SubtitleGenerator.ASS_HEADER)
+            f.write(header)
 
             for chunk in chunks:
                 start_str = SubtitleGenerator._format_time(chunk["start"])
@@ -105,8 +128,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # Dialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,Text
                 f.write(f"Dialogue: 0,{start_str},{end_str},Default,,0,0,0,,{text}\n")
                 
-        logger.info("subtitle_file_generated", path=out_path, job_id=job_id, words_count=len(word_timings), phrases_count=len(chunks))
+        logger.info("subtitle_file_generated", path=out_path, job_id=job_id, words_count=len(word_timings), phrases_count=len(chunks), width=width, height=height)
         return out_path
+
 
     @staticmethod
     def _format_srt_time(seconds: float) -> str:

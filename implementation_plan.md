@@ -1,147 +1,134 @@
-# Database Strategy & Migration Plan: Supabase to Local-First PostgreSQL (Revised)
+# Video Generation Pipeline Architecture Remediation Plan
 
-## 1. Executive Summary & Review Synthesis
+## Executive Summary
 
-AIVA is a **local-first, self-hosted AI video production platform**. This revised plan addresses every finding identified in [`review-implementation-plan-verdict.md`](file:///d:/repos/AIVA/review-implementation-plan-verdict.md):
+Cross-examination of [VIDEO_GENERATION_ARCHITECTURE_ANALYSIS.md](file:///d:/repos/AIVA/VIDEO_GENERATION_ARCHITECTURE_ANALYSIS.md) against the active codebase reveals that while the document's theoretical diagnosis of shallow seams and architecture smells is largely accurate, its specific claim that `AssetDownloader` crashes on `LocalSolidFallbackProvider` paths is **factually incorrect** (as `AssetDownloader` explicitly supports local paths via `os.path.exists`).
 
-1. **Database Selection**: Reconfirms **Pure Local PostgreSQL 16 (with `pgvector`)** over SQLite. SQLite would require an 80–90% rewrite of the query layer, break Python `asyncpg` async pools, lose native `JSONB`/UUID/triggers, and create multi-process write-lock contention during parallel rendering.
-2. **Infrastructure Canonical Source**: Reconciles Docker Compose by extending [`infra/docker-compose.yml`](file:///d:/repos/AIVA/infra/docker-compose.yml) (preserving `pgvector/pgvector:pg16` and Redis) instead of adding a conflicting root compose.
-3. **Missing API Endpoints**: Explicitly specifies implementing `GET /api/v1/projects`, `GET /api/v1/jobs`, and `GET /api/v1/jobs/[id]/events` before replacing client-side Supabase SDK calls.
-4. **Auth Replacement (Zero Regression)**: Replaces Supabase Auth with a lightweight, self-hosted session manager (`apps/web/src/lib/auth/session.ts`) supporting single-user zero-config local mode and cookie-signed auth for protected self-hosted setups.
-5. **Safe Migration Restructuring**: Physically moves the 8 migration files and `seed.sql` to `packages/database/migrations/` and updates [`packages/database/src/migrate.ts`](file:///d:/repos/AIVA/packages/database/src/migrate.ts) atomically in the same step.
-6. **Full Consumer Inventory**: Documents and decouples all 7 Supabase-dependent files across the frontend, telemetry, and job control routes.
-7. **Documentation Synchronization (Rule 12)**: Synchronizes `SETUP.md`, `README.md`, `.env.example`, `ARCHITECTURE.md`, `docs/EDD.md`, and creates `docs/adr/005-local-first-postgresql-migration.md`.
+However, the pipeline suffers from four concrete root causes:
+1. **Duration Decoupling & Truncation**: `voice_track.duration` is hardcoded to `0` in `CompositionHandler.ts`, `VoiceoverHandler` outputs `voice.scene_voiceovers` while `CompositionHandler` searches for `voice.voiceovers` (evaluating to undefined), and `encoder.py` computes `-t` from `sum(bg_tracks.duration)` rather than the true master audio duration.
+2. **Template Layering Asymmetry**: `StickmanTemplate` (`CharacterRig.tsx`) renders only a transparent character with no background layer, while `DocumentaryTemplate` (`KenBurns.tsx`) renders the background internally inside Remotion, causing black frames when `background_tracks` are empty and breaking timeline preview consistency.
+3. **Data Clumping & Naming Drift**: Inconsistent property names (`scene_voiceovers` vs `voiceovers`, `assetUrl` vs `asset_url` vs `asset_manifest.asset_slots.background.storage_key`, `duration` vs `duration_sec`) force fragile defensive fallbacks that silently fail to default values.
+4. **Hardcoded Subtitle Geometry**: `SubtitleGenerator.py` hardcodes 9:16 vertical geometry (`PlayResX: 1080`, `PlayResY: 1920`, `MarginV: 280`) inside `.ass` headers, breaking subtitle positioning on 16:9 and 1:1 aspect ratios.
 
 ---
 
-## 2. Proposed Changes by Component
+## User Review Required
 
-### Component 1: Infrastructure & Package Scripts (Reconciled)
-
-#### [MODIFY] [infra/docker-compose.yml](file:///d:/repos/AIVA/infra/docker-compose.yml)
-- Retain `pgvector/pgvector:pg16` and `redis:7-alpine` as the canonical local development & self-hosting backing store.
-- Update comments and headers to clarify that database is local standalone PostgreSQL (not external Supabase).
-
-#### [MODIFY] [package.json](file:///d:/repos/AIVA/package.json)
-- Add top-level orchestration scripts targeting `infra/docker-compose.yml`:
-  ```json
-  "services:up": "docker compose -f infra/docker-compose.yml up -d postgres redis",
-  "services:down": "docker compose -f infra/docker-compose.yml down",
-  "services:logs": "docker compose -f infra/docker-compose.yml logs -f"
-  ```
+> [!IMPORTANT]
+> **Key Architecture Decisions:**
+> 1. **Master Duration Contract**: The master audio track (`master_voice.mp3`) is the immutable single source of truth for the entire pipeline duration. All visual tracks (backgrounds, overlays, loops) and encoder `-t` limits will strictly anchor to `master_duration_seconds`.
+> 2. **Remotion Background Layering**: `CharacterRig.tsx` will be updated to include an optional `BackgroundLayer` component (rendering stock image/video or ambient fallback), making Remotion output self-contained for timeline previews while preserving alpha compositing when desired.
+> 3. **Clean Contract Schemas**: Replace ad-hoc dictionary property digging with standardized Pydantic models in Python and TypeScript interfaces in `@aiva/shared-types`.
 
 ---
 
-### Component 2: Unified Migrations in `@aiva/database`
+## Proposed Changes
 
-#### [NEW DIRECTORY] `packages/database/migrations/`
-- Move all 8 active migration files from `packages/database/supabase/migrations/` to `packages/database/migrations/`:
-  - `20260718000000_core_schema.sql`
-  - `20260718115941_job_events.sql`
-  - `20260718120000_grants.sql`
-  - `20260719000000_add_assets_job_step.sql`
-  - `20260720000000_add_pipeline_logs.sql`
-  - `20260720100000_add_cancellation_states.sql`
-  - `20260720110000_add_pause_states.sql`
-  - `20260812000000_app_settings.sql`
+Grouped by component layer:
 
-#### [MOVE] `packages/database/supabase/seed.sql` ➔ `packages/database/seed.sql`
-- Move `seed.sql` to package root.
+### 1. Shared Types & Contracts (`packages/shared-types`)
 
-#### [MODIFY] [packages/database/src/migrate.ts](file:///d:/repos/AIVA/packages/database/src/migrate.ts)
-- Update migration path resolver:
-  ```ts
-  const migrationsDir = path.join(__dirname, "../migrations");
-  const seedPath = path.join(__dirname, "../seed.sql");
-  ```
-
-#### [DELETE] [supabase/](file:///d:/repos/AIVA/supabase) & [packages/database/supabase/](file:///d:/repos/AIVA/packages/database/supabase)
-- Remove obsolete duplicate directories after physical migration.
+#### [MODIFY] [packages/shared-types/src/index.ts](file:///d:/repos/AIVA/packages/shared-types/src/index.ts)
+- Add canonical `AssetRef`, `AssetManifest`, and `TimelineContract` interfaces.
+- Standardize `VoiceoverScene` (`sequence_number`, `audio_url`, `duration_sec`, `word_timings`) and `SceneAssetData`.
+- Deprecate flat aliases (`assetUrl`, `asset_url`, `assetRef`, `asset_ref`).
 
 ---
 
-### Component 3: Local Authentication Successor
+### 2. Python Workers Audio & Voiceover Stage (`apps/workers`)
 
-#### [NEW] [apps/web/src/lib/auth/session.ts](file:///d:/repos/AIVA/apps/web/src/lib/auth/session.ts)
-- Implement self-hosted session helper:
-  - `getAuthenticatedUser(req: Request)`: Reads `x-user-id` header or `aiva_session` cookie. In development or single-user mode, defaults to `00000000-0000-0000-0000-000000000000` (`local@aiva.internal`).
-  - `createSessionToken(user)` / `validateSessionToken(token)`: HMAC-SHA256 session token signed with `APP_SECRET`.
+#### [MODIFY] [apps/workers/app/pipelines/stage_handlers.py](file:///d:/repos/AIVA/apps/workers/app/pipelines/stage_handlers.py)
+- In `handle_voiceover_stage`: measure the exact duration of `master_voice.mp3` via `ffprobe` (or mutagen/wave/pydub/os audio probe) and return `master_duration_sec` alongside `master_audio_url` and normalized `voiceovers` list.
+- In `handle_subtitle_extraction_stage`: ensure global word timings align with cumulative scene durations and master duration.
 
-#### [NEW] [apps/web/src/app/api/v1/auth/login/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/auth/login/route.ts)
-- Endpoint for local login verifying user in `auth.users` (or auto-authenticating default local admin) and setting `aiva_session` HTTP-only cookie.
-
-#### [MODIFY] [apps/web/src/app/login/page.tsx](file:///d:/repos/AIVA/apps/web/src/app/login/page.tsx)
-- Replace `@supabase/ssr` `signInWithPassword`/`signUp` with local `fetch('/api/v1/auth/login')`.
-
-#### [MODIFY] [apps/web/src/proxy.ts](file:///d:/repos/AIVA/apps/web/src/proxy.ts)
-- Extract session cookie or assign local default user ID to `x-user-id` header on incoming requests.
+#### [MODIFY] [apps/workers/app/core/audio_utils.py](file:///d:/repos/AIVA/apps/workers/app/core/audio_utils.py)
+- Add `get_audio_duration(file_path: str) -> float` helper using `ffprobe`.
 
 ---
 
-### Component 4: REST API Read/List Endpoints
+### 3. Python Asset Resolution Pipeline (`apps/workers`)
 
-#### [MODIFY] [apps/web/src/app/api/v1/projects/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/projects/route.ts)
-- Add `GET` handler: Queries `public.projects` joined with active `public.jobs` and returns `{ status: 'success', data: projects }` ordered by `created_at DESC`.
+#### [MODIFY] [apps/workers/app/providers/fallback_provider.py](file:///d:/repos/AIVA/apps/workers/app/providers/fallback_provider.py)
+- Ensure `LocalSolidFallbackProvider` returns canonical metadata with valid MIME type, dimensions matching canvas config, and relative or absolute storage path.
 
-#### [NEW] [apps/web/src/app/api/v1/jobs/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/route.ts)
-- Add `GET` handler: Queries `public.jobs` with filtering by project/status.
-
-#### [NEW] [apps/web/src/app/api/v1/jobs/[id]/events/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/%5Bid%5D/events/route.ts)
-- Add `GET` handler: Returns job status, recent `job_events`, and `pipeline_logs` for live dashboard telemetry.
+#### [MODIFY] [apps/workers/app/routers/assets.py](file:///d:/repos/AIVA/apps/workers/app/routers/assets.py)
+- Standardize output payload to emit canonical `asset_manifest` with guaranteed `background` slot and remove ambiguous aliases.
 
 ---
 
-### Component 5: Decouple Frontend Providers & Job Routes
+### 4. Node.js / TypeScript Orchestrator Handlers (`apps/web`)
 
-#### [MODIFY] [apps/web/src/providers/OperationsDashboardProvider.tsx](file:///d:/repos/AIVA/apps/web/src/providers/OperationsDashboardProvider.tsx)
-- Remove `createBrowserClient` and Supabase realtime channels.
-- Implement data loader fetching from `GET /api/v1/projects` with lightweight 3s interval polling and manual `refresh()`.
+#### [MODIFY] [apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts)
+- Standardize state keys: populate both `voice.scene_voiceovers` and `voice.voiceovers` (and `voice.master_duration_sec`) to eliminate caller mismatches.
+- Accurately sync `matchedScene.duration = vo.duration_sec` onto `context.state.scenes`.
 
-#### [MODIFY] [apps/web/src/providers/DashboardProvider.tsx](file:///d:/repos/AIVA/apps/web/src/providers/DashboardProvider.tsx)
-- Remove `createBrowserClient` and 4 Supabase channel subscriptions.
-- Fetch active telemetry from `GET /api/v1/jobs/${jobId}/events` with 2s polling while job is running.
+#### [MODIFY] [apps/web/src/services/pipeline/handlers/AssetHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/AssetHandler.ts)
+- Validate that every scene has a valid `asset_manifest.asset_slots.background` before progressing to rendering.
 
-#### [MODIFY] [apps/web/src/components/dashboard/SystemHealthPanel.tsx](file:///d:/repos/AIVA/apps/web/src/components/dashboard/SystemHealthPanel.tsx) & [apps/web/src/types/telemetry.ts](file:///d:/repos/AIVA/apps/web/src/types/telemetry.ts)
-- Replace Supabase indicator with `PostgreSQL Database` (`health.infrastructure.postgres`).
+#### [MODIFY] [apps/web/src/services/pipeline/handlers/RenderHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/RenderHandler.ts)
+- Pass canonical `assetUrl` and `duration` for each scene to `PipelineIR`.
+- Ensure master timeline IR sets total duration matching `voice.master_duration_sec`.
 
-#### [MODIFY] [apps/web/src/app/api/v1/jobs/pause/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/pause/route.ts)
-#### [MODIFY] [apps/web/src/app/api/v1/jobs/resume/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/resume/route.ts)
-#### [MODIFY] [apps/web/src/app/api/v1/jobs/stop/route.ts](file:///d:/repos/AIVA/apps/web/src/app/api/v1/jobs/stop/route.ts)
-- Remove `@supabase/ssr` `createServerClient`. Use `getAuthenticatedUser(req)` for user verification.
-
-#### [DELETE] [apps/web/lib/supabase/client.ts](file:///d:/repos/AIVA/apps/web/lib/supabase/client.ts)
-#### [DELETE] [apps/web/lib/supabase/server.ts](file:///d:/repos/AIVA/apps/web/lib/supabase/server.ts)
-#### [DELETE] [apps/web/lib/supabase/middleware.ts](file:///d:/repos/AIVA/apps/web/lib/supabase/middleware.ts)
-- Delete unused legacy SDK wrappers.
-
-#### [MODIFY] [apps/web/package.json](file:///d:/repos/AIVA/apps/web/package.json)
-- Remove `@supabase/supabase-js` and `@supabase/ssr`.
+#### [MODIFY] [apps/web/src/services/pipeline/handlers/CompositionHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts)
+- Resolve `totalDuration` directly from `voice.master_duration_sec` (or sum of verified scene voiceover durations).
+- Correct `voice_track.duration` from `0` to `totalDuration`.
+- Eliminate defensive fallback property digging; consume canonical `asset_manifest` and `scene.duration`.
 
 ---
 
-### Component 6: Documentation & Architecture Alignment (Rule 12)
+### 5. Template Renderer Engine (`apps/template-renderer`)
 
-#### [NEW] [docs/adr/005-local-first-postgresql-migration.md](file:///d:/repos/AIVA/docs/adr/005-local-first-postgresql-migration.md) & [MODIFY] [ADR.md](file:///d:/repos/AIVA/ADR.md)
-- Record architectural decision: deprecating Cloud Supabase in favor of standalone local PostgreSQL (`pg` + `asyncpg`).
+#### [MODIFY] [apps/template-renderer/src/templates/character-rig/CharacterRig.tsx](file:///d:/repos/AIVA/apps/template-renderer/src/templates/character-rig/CharacterRig.tsx)
+- Add optional background layer rendering: if `currentScene?.assetUrl` is present, render `<Img>` / `<Video>` background layer with ambient lighting under the stickman SVG, with fallback gradient if no asset URL is provided.
+- If transparency is explicitly requested (alpha overlay mode), retain transparent background.
 
-#### [MODIFY] [README.md](file:///d:/repos/AIVA/README.md) & [SETUP.md](file:///d:/repos/AIVA/SETUP.md)
-- Replace Supabase CLI setup steps with `pnpm services:up` and `pnpm db:migrate`.
-
-#### [MODIFY] [.env.example](file:///d:/repos/AIVA/.env.example)
-- Remove `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`; document `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/aiva`.
-
-#### [MODIFY] [docs/EDD.md](file:///d:/repos/AIVA/docs/EDD.md)
-- Reconcile §10, §12, §14, §39, §42, §43 to reflect local-first PostgreSQL architecture and local filesystem storage.
+#### [MODIFY] [apps/template-renderer/src/core/TimelineGenerator.ts](file:///d:/repos/AIVA/apps/template-renderer/src/core/TimelineGenerator.ts)
+- Ensure timeline frame calculations strictly align scene start/end frames with exact voiceover scene durations.
 
 ---
 
-## 3. Verification & Acceptance Gates
+### 6. FFmpeg Media Composition Engine (`apps/workers`)
 
-| Test / Gate | Command | Acceptance Criteria |
-|---|---|---|
-| **Migration Runner** | `pnpm db:migrate` | All 8 migrations apply cleanly from `packages/database/migrations/`. |
-| **Golden Pipeline Certifier** | `pnpm test:pipeline` | 5/5 test suites pass (Topic Brief, TTS, Voice Stitching, FFmpeg Composition, Single-Scene Re-render). |
-| **Worker Pytest Suite** | `cd apps/workers && venv\Scripts\python.exe -m pytest tests/ -v` | 11/11 tests pass with asyncpg communicating with local PostgreSQL. |
-| **Web Build & Typecheck** | `pnpm --filter web exec tsc --noEmit && pnpm --filter web build` | Next.js 16 compiles with 0 errors and zero Supabase imports. |
-| **Zero Runtime Supabase Imports** | `git grep -i "@supabase" apps/` | Exactly 0 matches across `apps/web`, `apps/workers`, and `apps/template-renderer`. |
-| **Frontend Live UI Check** | `pnpm dev` | Dashboard loads projects via `GET /api/v1/projects`, creation runs end-to-end, and status live-updates. |
+#### [MODIFY] [apps/workers/app/core/composition/subtitle_generator.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/subtitle_generator.py)
+- Make `.ass` header dynamic based on `CompositionModel.output_settings` (`width`, `height`, `aspect_ratio`).
+- Calculate `PlayResX`, `PlayResY`, and safe-zone `MarginV` dynamically (e.g. 1920x1080 -> MarginV=120, 1080x1920 -> MarginV=280).
+
+#### [MODIFY] [apps/workers/app/core/composition/graph_builder.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/graph_builder.py)
+- Ensure background scaling and concatenation trim duration correctly matches total duration.
+- When `background_tracks` is empty, generate synthetic styled dark ambient plate spanning exact `total_duration`.
+
+#### [MODIFY] [apps/workers/app/core/composition/encoder.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/encoder.py)
+- Anchor `-t` duration flag strictly to `model.voice_track.duration` (master audio duration) if present, falling back to background/overlay duration only when voiceover is absent.
+
+#### [MODIFY] [apps/workers/app/core/composition/engine.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/engine.py)
+- Compute `final_duration` using `voice_dur` (when `voice_track` exists) or `max(bg_dur, overlay_dur)`.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+1. **Python Worker Test Suite**:
+   ```powershell
+   cd apps/workers
+   .\venv\Scripts\pytest
+   ```
+2. **Template Renderer Type-Check & Bundle**:
+   ```powershell
+   pnpm --filter aiva-template-renderer type-check
+   ```
+3. **TypeScript / Monorepo Type-Check & Build**:
+   ```powershell
+   pnpm build
+   ```
+
+### End-to-End Pipeline Verification
+1. **Offline Zero-Key Synthetic Generation**:
+   - Run pipeline with mock/offline assets to verify `LocalSolidFallbackProvider` renders styled ambient gradient backgrounds (no black screen).
+2. **Multi-Scene Duration & Subtitle Sync**:
+   - Run a 3-scene 60s test video.
+   - Verify with `ffprobe` that `composition.mp4` duration matches `master_voice.mp3` duration within ±0.1s.
+   - Verify subtitles display until the final spoken word.
+3. **Template Verification**:
+   - Test both `stickman` and `documentary` video styles.
+   - Verify stickman character is displayed over background media (or ambient gradient) and Ken Burns documentary pans/zooms over media.

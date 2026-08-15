@@ -32,9 +32,18 @@ class CompositionEngine:
             validation_errors = CompositionValidator.validate(model)
             warnings.extend(validation_errors)
             
-            # 2. Subtitles
+            # 2. Subtitles with dynamic geometry
             log_progress("Generating Subtitle .ass file", 20)
-            subtitle_path = SubtitleGenerator.generate(model.word_timings, model.job_id)
+            width = model.output_settings.width or 1080
+            height = model.output_settings.height or 1920
+            aspect_ratio = model.output_settings.aspect_ratio or "9:16"
+            subtitle_path = SubtitleGenerator.generate(
+                model.word_timings,
+                model.job_id,
+                width=width,
+                height=height,
+                aspect_ratio=aspect_ratio
+            )
             
             # 3. Filter Graph
             log_progress("Building FFmpeg Filter Graph", 30)
@@ -64,13 +73,15 @@ class CompositionEngine:
             # 6. Result
             log_progress("Composition Finished", 100)
             
-            # Calculate final duration based on inputs
+            # Calculate final duration anchored to voice track
+            voice_dur = model.voice_track.duration if (model.voice_track and model.voice_track.duration) else 0.0
             bg_dur = sum(t.duration for t in model.background_tracks if t.duration) if model.background_tracks else 0.0
             overlay_dur = model.overlay_track.duration if (model.overlay_track and model.overlay_track.duration) else 0.0
-            voice_dur = model.voice_track.duration if (model.voice_track and model.voice_track.duration) else 0.0
-            final_duration = max(bg_dur, overlay_dur, voice_dur)
+            
+            final_duration = voice_dur if voice_dur > 0.0 else max(bg_dur, overlay_dur)
             if final_duration <= 0.0:
                 final_duration = 10.0
+
             
             return CompositionResult(
                 output_reference=MediaReference(

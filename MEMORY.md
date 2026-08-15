@@ -156,11 +156,20 @@ When `llm_provider` is `openai_compatible` but `llm_api_key` is empty (such as i
 
 To prevent video truncation caused by per-scene overlay scoping, `RenderHandler` generates a continuous full-timeline `masterIR` across all scenes for the master composition overlay (`master_overlay.webm`), while maintaining parallel single-scene renders for timeline editor preview cache. `AssetSelectionStrategy` includes a guaranteed local solid/gradient canvas provider (`LocalSolidFallbackProvider`), `FilterGraphBuilder` injects a synthetic background canvas when background tracks are empty, and `Encoder` loops video backgrounds (`-stream_loop -1`) with explicit `-t` total duration anchoring. Subtitle generation applies phrase-chunking (2–4 words per dialogue line) for optimal viewer retention.
 
+## AD-023 — Deep Seam Contracts & Audio-Anchored Video Composition
+
+The pipeline architecture has been hardened with deep seam contracts across `@aiva/shared-types`, Python workers, Node.js orchestrator, Remotion renderer, and FFmpeg compositor:
+1. **Master Duration Contract**: The master audio track (`master_voice.mp3`) is the single immutable source of truth for duration (`master_duration_sec`), probed directly via `ffprobe`. All downstream stages (`TimelineGenerator`, `RenderHandler`, `CompositionHandler`, `Encoder`) anchor to this duration, preventing video/audio/subtitle cutoff.
+2. **Self-Contained Template Layering**: `CharacterRig.tsx` incorporates an active `BackgroundLayer` rendering scene media (`assetUrl`) with dark ambient gradient fallback, ensuring Remotion outputs and single-scene timeline previews are complete and free of black frames.
+3. **Dynamic Canvas Subtitle Rendering**: `SubtitleGenerator` computes `.ass` subtitle safe zones (`PlayResX`, `PlayResY`, `MarginV`) and typography size dynamically from `CanvasConfig`, ensuring crisp alignment across 9:16, 16:9, and 1:1 viewports.
+
 ---
 
 # Discoveries
 
 - **Groq API Rate Limits**: `llama-3.3-70b-versatile` has strict 100k Tokens-Per-Day (TPD) limits, which get exhausted very quickly in a full pipeline test. Switching to `llama-3.1-8b-instant` provides a separate, faster quota (though still subject to 6,000 Tokens-Per-Minute limits for large requests). The pipeline MUST gracefully handle or backoff on HTTP 429/413 rate limit errors from Groq.
 - **Next.js 16 Proxy Convention**: Next.js 16 Turbopack replaces `middleware.ts` with `src/proxy.ts`. Attempting to define both triggers a build-time fatal error (`middleware-to-proxy`). `src/proxy.ts` must remain the single entrypoint for auth token extraction and proxy headers.
+- **Windows Path Formatting in Asset Downloader**: Windows file paths containing drive letters (e.g. `C:\...`) require sanitizing file basenames when copying local assets into temp cache directories to avoid `OSError: [Errno 22]` colons in destination paths.
+
 
 

@@ -41,6 +41,9 @@ export class RenderHandler extends BaseHandler {
       height = 1080
     }
 
+    const voiceovers = voice.voiceovers || voice.scene_voiceovers || []
+    const masterDurationSec = Number(voice.master_duration_sec || (Array.isArray(voiceovers) ? voiceovers.reduce((acc: number, v: any) => acc + Number(v.duration_sec || 0), 0) : 0))
+
     // 2. Package and dispatch per-scene parallel renders to Template Renderer
     const renderUrl = process.env.TEMPLATE_RENDERER_URL || 'http://localhost:3001'
     await context.logger.info(`Dispatching ${scenes.length} scene(s) to Render Engine in parallel: ${renderUrl}/render`)
@@ -48,13 +51,13 @@ export class RenderHandler extends BaseHandler {
     const sceneRenderResults = await Promise.all(
       scenes.map(async (s: any, index: number) => {
         const seq = s.sequence_number || index + 1
-        const sceneVo = Array.isArray(voice.voiceovers)
-          ? voice.voiceovers.find((vo: any) => vo.sequence_number === seq)
+        const sceneVo = Array.isArray(voiceovers)
+          ? voiceovers.find((vo: any) => vo.sequence_number === seq)
           : null
         const sceneWordTimings = sceneVo?.word_timings || (Array.isArray(wordTimings) ? wordTimings : [])
         const sceneAudioUrl = sceneVo?.audio_url || audioUrl || ''
 
-        const sceneDuration = Number(s.duration || sceneVo?.duration_sec || sceneVo?.duration || 4.5)
+        const sceneDuration = Number(sceneVo?.duration_sec || s.duration || sceneVo?.duration || 4.5)
 
         const sceneIR: PipelineIR = {
           version: 1,
@@ -73,6 +76,7 @@ export class RenderHandler extends BaseHandler {
           voice: {
             wordTimings: sceneWordTimings,
             audioUrl: sceneAudioUrl,
+            masterDurationSec: sceneDuration,
           },
           scenes: [
             {
@@ -134,13 +138,14 @@ export class RenderHandler extends BaseHandler {
         voice: {
           wordTimings: Array.isArray(wordTimings) ? wordTimings : [],
           audioUrl: voice.master_audio_url || voice.audioUrl || audioUrl || '',
+          masterDurationSec: masterDurationSec > 0 ? masterDurationSec : undefined,
         },
         scenes: scenes.map((s: any, index: number) => {
           const seq = s.sequence_number || index + 1
-          const sceneVo = Array.isArray(voice.voiceovers)
-            ? voice.voiceovers.find((vo: any) => vo.sequence_number === seq)
+          const sceneVo = Array.isArray(voiceovers)
+            ? voiceovers.find((vo: any) => vo.sequence_number === seq)
             : null
-          const sceneDuration = Number(s.duration || sceneVo?.duration_sec || sceneVo?.duration || 4.5)
+          const sceneDuration = Number(sceneVo?.duration_sec || s.duration || sceneVo?.duration || 4.5)
 
           return {
             id: String(seq),
@@ -153,6 +158,7 @@ export class RenderHandler extends BaseHandler {
           }
         }),
       }
+
 
       const masterResponse = await workerGateway.execute<any>(`${renderUrl}/render`, masterIR, 15 * 60 * 1000)
       if (masterResponse.status === 'success' && masterResponse.result?.outputs?.video) {

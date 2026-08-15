@@ -148,18 +148,20 @@ Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 - [x] **F8**: Implemented dynamic geometry extraction and visual scene re-rendering via `template-renderer` in `rerender_single_scene`
 - [x] **F11**: Unified prompt duration pacing to check `duration_target_seconds` alongside `target_duration_seconds` in `prompts.py` and `stage_handlers.py`
 
-## 16. Video Generation Pipeline Remediation (Milestones 1–5)
+## 17. Video Generation Architecture Deep Seam Remediation
 
-- [x] **M1 (Master Overlay & Duration Coupling)**: Resolved 10s video truncation by implementing full multi-scene continuous master overlay generation in `RenderHandler.ts`, fixing `vo.duration_sec` parsing in `VoiceoverHandler.ts`, and computing `sum()` duration in `engine.py`.
-- [x] **M2 (Guaranteed Fallback Assets & Synthetic Canvas)**: Added `LocalSolidFallbackProvider` in `fallback_provider.py` and `asset_strategy.py` plus synthetic dark canvas base layer (`color=c=0x0a0e1a`) in `graph_builder.py` to eliminate black frames under zero-key / offline conditions.
-- [x] **M3 (FFmpeg Composition Normalization & Video Looping)**: Added `-stream_loop -1` for video background inputs in `encoder.py`, removed `shortest=1` overlay truncation (`eof_action=pass`), and added `-t` total duration anchoring.
-- [x] **M4 (Subtitle Robustness & Phrase Chunking)**: Implemented natural 2–4 word subtitle phrase grouping with safe-zone ASS styling (`MarginV=280`, 72pt bold white with black border) and cumulative offset timing reconstruction.
-- [x] **M5 (Template Engine Visual Enrichment)**: Built animated vector SVG stickman character rig in `CharacterRig.tsx` with action-driven poses (`talk`, `point`, `walk`, `shrug`, `idle`) and multi-scene Ken Burns sequence animations in `KenBurns.tsx`.
+- [x] **Canonical Seam Contracts (`@aiva/shared-types`)**: Defined canonical `AssetRef`, `AssetManifest`, `TimelineContract`, `VoiceoverScene`, and `CanvasConfig` interfaces in `packages/shared-types`.
+- [x] **Master Audio Duration Contract**: Added exact audio duration probing (`get_audio_duration`) via `ffprobe` in `audio_utils.py` and returned `master_duration_sec` from `handle_voiceover_stage`.
+- [x] **Duration Coupling & State Normalization**: Unified `VoiceoverHandler.ts` to populate `voice.voiceovers` and `voice.master_duration_sec`. Updated `RenderHandler.ts`, `CompositionHandler.ts`, `TimelineGenerator.ts`, and `encoder.py` to anchor duration directly to the master audio file.
+- [x] **Self-Contained Stickman Template (`CharacterRig.tsx`)**: Embedded dynamic `BackgroundLayer` into `CharacterRig.tsx` that consumes scene media (`assetUrl`) with ambient dark gradient fallback, eliminating black frames in timeline preview and final render.
+- [x] **Dynamic Canvas Subtitle Geometry (`subtitle_generator.py`)**: Parameterized ASS header with `PlayResX`, `PlayResY`, `MarginV`, and font size scaling dynamically derived from output resolution (9:16 vertical, 16:9 horizontal, 1:1 square).
+- [x] **Windows Path Sanitization in `AssetDownloader`**: Fixed path and filename extraction in `AssetDownloader.download` to handle Windows backslashes and drive letter colons safely.
 
 ---
 
 # Completed
 
-- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, Deterministic Project Artifact Persistence System with Checkpoint Resumability, Full Web App Redesign, V1 Code Review Remediation (F1-F11), and Video Generation Pipeline Remediation (M1-M5).
+- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, Deterministic Project Artifact Persistence System with Checkpoint Resumability, Full Web App Redesign, V1 Code Review Remediation (F1-F11), Video Generation Pipeline Remediation (M1-M5), and Video Generation Architecture Deep Seam Remediation (Section 17).
+
 
 
