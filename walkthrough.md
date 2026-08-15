@@ -1,56 +1,51 @@
-# Walkthrough — Video Generation Pipeline Remediation
+# Video Generation Pipeline Walkthrough: Live Stock Media & Dynamic Visuals
 
-We have successfully cross-examined [VIDEO_GENERATION_ARCHITECTURE_ANALYSIS.md](file:///d:/repos/AIVA/VIDEO_GENERATION_ARCHITECTURE_ANALYSIS.md), addressed user feedback, and implemented the deep seam contracts across `@aiva/shared-types`, Python workers, Node.js orchestrator, Remotion renderer, and the FFmpeg compositor.
-
----
-
-## Key Changes Implemented
-
-### 1. Canonical Shared Types & Contracts (`packages/shared-types`)
-- In [types.ts](file:///d:/repos/AIVA/packages/shared-types/src/types.ts), defined canonical interfaces:
-  - `AssetRef` & `AssetManifest`: strongly typed media references with opaque IDs, MIME types, and guaranteed background slots.
-  - `VoiceoverScene` & `VoiceState`: canonical arrays containing `sequence_number`, `audio_url`, `duration_sec`, and `word_timings`.
-  - `CanvasConfig` & `TimelineContract`: single source of truth for duration, frame counts, and rendering geometry.
-
-### 2. Master Audio Duration Contract (`apps/workers` & `apps/web`)
-- Added `get_audio_duration(file_path: str) -> float` in [audio_utils.py](file:///d:/repos/AIVA/apps/workers/app/core/audio_utils.py) using `ffprobe`.
-- In [stage_handlers.py](file:///d:/repos/AIVA/apps/workers/app/pipelines/stage_handlers.py), `handle_voiceover_stage` probes the exact duration of `master_voice.mp3` and returns `master_duration_sec`.
-- In [VoiceoverHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/VoiceoverHandler.ts), populated `voice.voiceovers` and `voice.master_duration_sec`.
-- In [TimelineGenerator.ts](file:///d:/repos/AIVA/apps/template-renderer/src/core/TimelineGenerator.ts), `RenderHandler.ts`, and [CompositionHandler.ts](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts), anchored total video and overlay durations directly to `master_duration_sec`.
-- In [encoder.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/encoder.py), anchored `-t` encoding limit primarily to `model.voice_track.duration`, completely eliminating ~10s premature cutoff.
-
-### 3. Self-Contained Stickman Template Layering (`apps/template-renderer`)
-- In [CharacterRig.tsx](file:///d:/repos/AIVA/apps/template-renderer/src/templates/character-rig/CharacterRig.tsx), added `BackgroundLayer` that renders scene media (`assetUrl`) with ambient dark gradient fallback behind the animated stickman SVG.
-- Resolves transparent blank/black screens in single-scene studio previews and master renders.
-
-### 4. Dynamic Canvas Subtitle Geometry (`apps/workers`)
-- In [subtitle_generator.py](file:///d:/repos/AIVA/apps/workers/app/core/composition/subtitle_generator.py), replaced static vertical ASS header with dynamic `_build_ass_header(width, height, aspect_ratio)`.
-- Automatically scales font size, margins (`MarginV`), and resolution (`PlayResX`, `PlayResY`) for 9:16 Shorts, 16:9 YouTube horizontal, and 1:1 square videos.
-
-### 5. Windows Path Handling in Asset Downloader (`apps/workers`)
-- In [asset_downloader.py](file:///d:/repos/AIVA/apps/workers/app/services/asset_downloader.py), fixed local path and `file:///` parsing. Normalized backslashes and sanitized destination file names to prevent Windows drive letter colon errors (`OSError: [Errno 22]`).
+## Overview
+We identified and resolved why the pipeline was falling back to solid ambient backgrounds, successfully connected the user's **Pexels and Pixabay** stock media providers, calibrated semantic ranking thresholds, and fixed the FFmpeg compositor's video layer rendering.
 
 ---
 
-## Verification Results
+## Root Cause Analysis & Fixes
 
-### 1. Python Worker Pytest Suite (38/38 Passed)
-```powershell
-$env:PYTHONPATH="."; .\venv\Scripts\pytest
-```
-- `test_asset_downloader_local_and_file_urls`: PASSED
-- `test_dynamic_ass_subtitle_generation` (9:16 & 16:9 ASS headers): PASSED
-- `test_handle_voiceover_stage_multi_scene_concatenation`: PASSED
-- `test_composition_engine_ducking_e2e`: PASSED
-- `test_fallback_asset_provider`: PASSED
-- Full suite: **38 passed in 17.58s**.
+1. **Worker `.env` Path & SSL Configuration**:
+   - **Issue**: FastAPI worker could not locate the root `.env` containing `PEXELS_API_KEY` and `PIXABAY_API_KEY`, and Windows `aiohttp` SSL handshakes failed without CA certificates.
+   - **Fix**: Updated [`config.py`](file:///d:/repos/AIVA/apps/workers/app/core/config.py) to resolve repo root `.env` via `Path(__file__).resolve().parents[3] / ".env"` and added `certifi` CA context to [`asset_providers.py`](file:///d:/repos/AIVA/apps/workers/app/providers/asset_providers.py) and [`asset_downloader.py`](file:///d:/repos/AIVA/apps/workers/app/services/asset_downloader.py).
 
-### 2. TypeScript & Monorepo Build
-```powershell
-pnpm build
-```
-- `@aiva/shared-types`: PASSED
-- `@aiva/prompt-library`: PASSED
-- `aiva-template-renderer`: PASSED (`tsc --noEmit`)
-- `web`: Next.js 16 build PASSED (19 static & dynamic routes generated cleanly).
-- Turbo: **4 successful, 4 total**.
+2. **Semantic Ranking Threshold Calibration**:
+   - **Issue**: `semantic_threshold` was set to `0.75` in [`AssetConfig`](file:///d:/repos/AIVA/apps/workers/app/models/asset.py), which is too restrictive for cosine similarity between script narration and stock video metadata tags (~0.25–0.50 score).
+   - **Fix**: Lowered `semantic_threshold` to `0.20` in [`asset.py`](file:///d:/repos/AIVA/apps/workers/app/models/asset.py) and normalized search queries in [`assets.py`](file:///d:/repos/AIVA/apps/workers/app/routers/assets.py).
+
+3. **Chromium Local Asset & Data URI Separation**:
+   - **Issue**: [`AssetResolver.ts`](file:///d:/repos/AIVA/apps/template-renderer/src/core/AssetResolver.ts) was converting local `.mp4` video files into multi-megabyte base64 Data URIs, which HTML5 `<video>` tags in Chromium cannot stream.
+   - **Fix**: Kept local video files as direct file paths with Chromium `disableWebSecurity: true` while keeping fast base64 data URIs for static images.
+
+4. **FFmpeg Visual Layer Priority & Alpha Handling**:
+   - **Issue**: In [`graph_builder.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/graph_builder.py), when Remotion rendered an opaque documentary MP4, it was overlaid on top of `[bg_concat]`, obscuring the real stock video footage.
+   - **Fix**: Updated [`graph_builder.py`](file:///d:/repos/AIVA/apps/workers/app/core/composition/graph_builder.py) and [`CompositionHandler.ts`](file:///d:/repos/AIVA/apps/web/src/services/pipeline/handlers/CompositionHandler.ts) so only transparent WebM character rigs (like stickman) are overlaid, while `[bg_concat]` is used directly for stock video and photo sequences.
+
+---
+
+## Visual Verification & Output
+
+We watched the latest generated video:
+- **Location**: [`D:\repos\AIVA\storage\projects\66c2bbf0-e407-4c65-bdea-207ac886f9ac\composition.mp4`](file:///d:/repos/AIVA/storage/projects/66c2bbf0-e407-4c65-bdea-207ac886f9ac/composition.mp4)
+- **File Size**: `10.72 MB` (1080x1920 @ 30fps)
+- **Visual Breakdown**:
+  - **Scene 1**: Vertical HD stock video of a student/remote worker with coffee cup and study notes (*"Think caffeine gives you energy? Think again."*)
+  - **Scene 2**: Vertical HD stock video of a sleepy black cat with vivid green eyes (*"Caffeine does not create energy. It only blocks adenosine..."*)
+  - **Scene 3**: Vertical HD stock video of fresh ground espresso in a pour-over dripper (*"While adenosine continues accumulating in the background..."*)
+  - **Scene 4**: Vertical AI artwork of a towering skyscraper in a stormy night (*"When caffeine inevitably metabolizes, that backlog of exhaustion crashes in all at once."*)
+  - **Scene 5**: Vertical 4K aerial stock footage of emerald ocean waves crashing (*"That is why you crash."*)
+
+## Observations & Next Steps
+
+Upon observation, the video provides actual stock footage now, but further improvements are needed:
+- **Subtitles & Sync**: We need to improve subtitle accuracy and syncing them properly with the audio.
+- **Long-form Videos**: We need to produce long-form videos, not just 10-second clips.
+- **Voice-over Fix**: The voice-over at the end was cut off; this needs to be fixed.
+
+> [!NOTE]
+> These tests were executed via backend/scratch scripts directly, not through the frontend UI. The relevant scripts used for this testing are:
+> - [`test_custom_script_pipeline.mjs`](file:///C:/Users/PC/.gemini/antigravity-ide/brain/eb7cd134-dafa-437a-a142-c4f43a668854/scratch/test_custom_script_pipeline.mjs): Used to drive the orchestration of a custom script generation.
+> - [`test_asset_fetch.py`](file:///C:/Users/PC/.gemini/antigravity-ide/brain/eb7cd134-dafa-437a-a142-c4f43a668854/scratch/test_asset_fetch.py): Used to test directly calling the Pexels/Pixabay APIs.
+> - [`test_strategy_live.py`](file:///C:/Users/PC/.gemini/antigravity-ide/brain/eb7cd134-dafa-437a-a142-c4f43a668854/scratch/test_strategy_live.py): Used to test the strategy worker's asset resolution pipeline.
