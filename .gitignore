@@ -67,3 +67,6 @@ apps/workers/models/sdxl/
 
 /storage
 apps/workers/storage/
+
+
+.cache/

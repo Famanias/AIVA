@@ -91,3 +91,43 @@ Ran `pnpm build`:
 Ran `certifier_runner.py` for both `voiceover` and `composition` stages:
 - **Voiceover**: Multi-scene TTS synthesis synthesized 2 scenes, generated word timings, and concatenated `master_voice.mp3` cleanly (`audio_concatenation_successful count=2`).
 - **Composition**: Burned in `.ass` kinetic subtitles, mixed ambient track with sidechain compressor ducking, and rendered final master video `composition.mp4` + `subtitles.srt` in **484 ms** using NVENC hardware acceleration.
+
+---
+
+## 4. Manual QA Validation
+
+To manually validate these changes in your local environment, you can perform the following steps:
+
+1. **Verify Ollama Fallback (F1)**
+   - Remove or empty the `OPENAI_API_KEY` (or equivalent) in your worker `.env` file.
+   - Start the Python worker.
+   - Trigger a script/prompt generation.
+   - Observe the worker logs for the warning: `Empty API key for openai_compatible provider; falling back to local Ollama`.
+
+2. **Verify Storage Range Requests (F3)**
+   - Run the Next.js server (`pnpm dev`).
+   - Use `curl` to request a suffix byte range from an existing storage asset:
+     ```bash
+     curl -i -H "Range: bytes=-500" http://localhost:3000/api/v1/storage/your-project-id/master_voice.mp3
+     ```
+   - Verify the response is `206 Partial Content` and contains exactly the last 500 bytes of the file.
+
+3. **Verify Parallel Scene Rendering (F7)**
+   - Submit a new video generation request with multiple scenes.
+   - Observe the network requests or Next.js logs.
+   - You should see multiple `PipelineIR` payloads dispatched simultaneously, rather than sequentially.
+
+4. **Verify Single Scene Visual Rerender (F8)**
+   - In the Next.js UI, navigate to an existing video project.
+   - Edit the text/script of a single scene and click rerender for that scene.
+   - Verify that the `template-renderer` is invoked for that specific scene and the visual overlay (text/avatar) updates in the UI preview.
+
+5. **Verify Structured Logging (F5)**
+   - While generating a video, observe the Python worker terminal output.
+   - Verify that log statements from `engine.py`, `encoder.py`, and `subtitle_generator.py` are output as structured JSON/key-value lines (via `structlog`) containing `job_id`, `stage`, and `progress_pct` rather than plain text statements.
+
+6. **Verify Settings Model Auto-Detection & Save Without Manual Entry**
+   - Navigate to `http://localhost:3000/settings`.
+   - On initial page load or when switching presets (OpenRouter, OmniRoute, Ollama /v1), verify that the model list is automatically populated and displayed in a selectable dropdown.
+   - Click **Save Settings** without manually typing custom model names or IDs.
+   - Verify that settings save successfully and display the green confirmation toast (`Settings saved and encrypted in database!`).

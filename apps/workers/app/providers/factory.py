@@ -44,34 +44,35 @@ async def get_llm_provider_async() -> ILLMProvider:
     api_key = (await get_app_setting("llm_api_key")) or ""
     model = (await get_app_setting("llm_model")) or "google/gemini-flash-1.5"
 
-    if not api_key:
+    is_local_endpoint = "localhost" in base_url or "127.0.0.1" in base_url or "::1" in base_url
+
+    if not api_key and not is_local_endpoint:
         legacy = await _legacy_llm_config(provider_name)
         if legacy:
             logger.warning("deprecated_llm_keys", msg="Migrate to llm_base_url/llm_api_key/llm_model")
             return legacy
 
-        # Auto-fallback to local Ollama if no API key is provided
+        # Auto-fallback to local Ollama if no API key is provided for a remote endpoint
         from app.providers.llm.ollama_provider import OllamaProvider
         ollama_url = (
             (await get_app_setting("ollama_base_url"))
-            or (await get_app_setting("llm_base_url"))
             or "http://localhost:11434"
         )
         ollama_model = (
             (await get_app_setting("ollama_model"))
-            or (await get_app_setting("llm_model"))
             or "llama3.2"
         )
         logger.warning(
             "llm_no_api_key_falling_back_to_ollama",
-            msg="No LLM API key configured; falling back to local Ollama instance.",
+            msg="No LLM API key configured for cloud endpoint; falling back to local Ollama instance.",
             base_url=ollama_url,
             model=ollama_model,
         )
         return OllamaProvider(base_url=ollama_url, model=ollama_model)
 
+    effective_api_key = api_key if api_key else "local"
     logger.info("llm_provider_loaded", provider="openai_compatible", base_url=base_url, model=model)
-    return OpenAICompatibleProvider(base_url=base_url, api_key=api_key, model=model)
+    return OpenAICompatibleProvider(base_url=base_url, api_key=effective_api_key, model=model)
 
 
 async def _legacy_llm_config(provider_name: str) -> ILLMProvider | None:

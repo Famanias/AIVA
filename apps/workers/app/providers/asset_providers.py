@@ -20,7 +20,8 @@ class PexelsProvider(IAssetProvider):
         return "pexels"
 
     async def search(self, query: str, limit: int = 25) -> List[RankedCandidate]:
-        api_key = os.getenv("PEXELS_API_KEY")
+        from app.core.db import get_app_setting
+        api_key = (await get_app_setting("pexels_api_key")) or os.getenv("PEXELS_API_KEY")
         if not api_key:
             return []
 

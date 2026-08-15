@@ -7,6 +7,7 @@ RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
 # Copy root monorepo files & packages
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml /app/
+COPY tsconfig.base.json /app/tsconfig.base.json
 COPY packages /app/packages
 COPY apps/web /app/apps/web
 # Copy template-renderer source so cross-package type imports resolve during next build

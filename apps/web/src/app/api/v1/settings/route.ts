@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS: Record<string, string> = {
   image_provider: "sdxl",
   broll_provider: "pexels",
   ollama_base_url: "http://localhost:11434",
-  ollama_model: "llama3.1:8b",
+  ollama_model: "llama3.2",
 };
 
 export async function GET() {
@@ -73,10 +73,14 @@ export async function POST(request: NextRequest) {
 
     for (const key of SETTINGS_KEYS) {
       if (body[key] !== undefined) {
-        const val = body[key];
+        let val = body[key];
         // Don't overwrite encrypted keys with masked placeholders (e.g. "sk-••••••••1234")
         if (ENCRYPTED_KEYS.includes(key) && val.includes("••••")) {
           continue;
+        }
+        // Fall back to default value if empty string is supplied for non-secret keys
+        if (!ENCRYPTED_KEYS.includes(key) && (!val || !val.trim()) && DEFAULT_SETTINGS[key]) {
+          val = DEFAULT_SETTINGS[key];
         }
         const isEncrypted = ENCRYPTED_KEYS.includes(key);
         const category = key.includes("ollama") ? "local_ai" : isEncrypted ? "api_keys" : "providers";

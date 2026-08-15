@@ -70,11 +70,29 @@ const PRESET_URLS = [
   { label: 'Local Hardware (Ollama /v1)', url: 'http://localhost:11434/v1' },
 ];
 
+const FALLBACK_LLM_MODELS = [
+  'google/gemini-flash-1.5',
+  'google/gemini-2.0-flash',
+  'anthropic/claude-3.5-sonnet',
+  'meta-llama/llama-3.3-70b-instruct',
+  'openai/gpt-4o-mini',
+  'openai/gpt-4o',
+  'deepseek/deepseek-chat',
+];
+
+const FALLBACK_OLLAMA_MODELS = [
+  'llama3.2',
+  'llama3.1:8b',
+  'deepseek-r1',
+  'mistral',
+  'qwen2.5:7b',
+];
+
 const defaultForm: SettingsFormState = {
   llm_provider: 'openai_compatible',
-  llm_base_url: '',
+  llm_base_url: 'https://openrouter.ai/api/v1',
   llm_api_key: '',
-  llm_model: '',
+  llm_model: 'google/gemini-flash-1.5',
   tts_provider: 'edge_tts',
   image_provider: 'sdxl',
   broll_provider: 'pexels',
@@ -92,12 +110,130 @@ export default function SettingsPage() {
   const [form, setForm] = useState<SettingsFormState>(defaultForm);
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>(FALLBACK_LLM_MODELS);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [fetchModelsStatus, setFetchModelsStatus] = useState<FetchStatus | null>(null);
   const [customModelMode, setCustomModelMode] = useState(false);
   const [customOllamaModelMode, setCustomOllamaModelMode] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
+
+  const handleFetchModels = async (
+    targetBaseUrl?: string,
+    targetApiKey?: string,
+    currentModel?: string
+  ) => {
+    const baseUrl = targetBaseUrl !== undefined ? targetBaseUrl : form.llm_base_url;
+    const apiKey = targetApiKey !== undefined ? targetApiKey : form.llm_api_key;
+    const activeModel = currentModel !== undefined ? currentModel : form.llm_model;
+
+    if (!baseUrl) return;
+
+    setFetchingModels(true);
+    setFetchModelsStatus(null);
+    try {
+      const res = await fetch('/api/v1/settings/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          llm_base_url: baseUrl,
+          llm_api_key: apiKey,
+        }),
+      });
+      const data = await res.json();
+      if (data.status === 'success' && Array.isArray(data.models) && data.models.length > 0) {
+        setAvailableModels(data.models);
+        setFetchModelsStatus({
+          connected: true,
+          message: data.message || `Found ${data.models.length} model(s).`,
+        });
+        setCustomModelMode(false);
+        setForm((prev) => {
+          const modelToUse =
+            activeModel && data.models.includes(activeModel)
+              ? activeModel
+              : prev.llm_model && data.models.includes(prev.llm_model)
+              ? prev.llm_model
+              : data.models[0];
+          return { ...prev, llm_model: modelToUse };
+        });
+      } else {
+        setAvailableModels((prev) => (prev.length > 0 ? prev : FALLBACK_LLM_MODELS));
+        setFetchModelsStatus({
+          connected: false,
+          message: data.message || 'No models returned. Using standard model list.',
+        });
+      }
+    } catch (err: any) {
+      setAvailableModels((prev) => (prev.length > 0 ? prev : FALLBACK_LLM_MODELS));
+      setFetchModelsStatus({
+        connected: false,
+        message: err.message || 'Failed to fetch models. Using standard model list.',
+      });
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleTestOllama = async (
+    targetBaseUrl?: string,
+    currentModel?: string
+  ) => {
+    setTestingOllama(true);
+    setOllamaStatus(null);
+
+    const baseUrl =
+      targetBaseUrl !== undefined
+        ? targetBaseUrl
+        : form.ollama_base_url || 'http://localhost:11434';
+    const activeModel = currentModel !== undefined ? currentModel : form.ollama_model;
+
+    try {
+      const res = await fetch('/api/v1/settings/test-ollama', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ollama_base_url: baseUrl }),
+      });
+      const data = await res.json();
+      const detectedModels =
+        Array.isArray(data.models) && data.models.length > 0 ? data.models : [];
+
+      setOllamaStatus({
+        connected: data.connected,
+        models: detectedModels,
+        message: data.message,
+      });
+
+      if (data.connected && detectedModels.length > 0) {
+        setCustomOllamaModelMode(false);
+        setForm((prev) => {
+          const modelToUse =
+            activeModel && detectedModels.includes(activeModel)
+              ? activeModel
+              : prev.ollama_model && detectedModels.includes(prev.ollama_model)
+              ? prev.ollama_model
+              : detectedModels[0];
+          return { ...prev, ollama_model: modelToUse };
+        });
+      } else {
+        setForm((prev) => ({
+          ...prev,
+          ollama_model: prev.ollama_model || activeModel || 'llama3.2',
+        }));
+      }
+    } catch (err: any) {
+      setOllamaStatus({
+        connected: false,
+        models: [],
+        message: err.message,
+      });
+      setForm((prev) => ({
+        ...prev,
+        ollama_model: prev.ollama_model || activeModel || 'llama3.2',
+      }));
+    } finally {
+      setTestingOllama(false);
+    }
+  };
 
   const fetchSettings = async () => {
     try {
@@ -109,8 +245,16 @@ export default function SettingsPage() {
         if (fetched.llm_provider && fetched.llm_provider !== 'ollama') {
           fetched.llm_provider = 'openai_compatible';
         }
+        if (!fetched.llm_base_url) fetched.llm_base_url = 'https://openrouter.ai/api/v1';
+        if (!fetched.llm_model) fetched.llm_model = 'google/gemini-flash-1.5';
+        if (!fetched.ollama_base_url) fetched.ollama_base_url = 'http://localhost:11434';
+        if (!fetched.ollama_model) fetched.ollama_model = 'llama3.2';
+
         setForm((prev) => ({ ...prev, ...fetched }));
-        handleTestOllama(fetched.ollama_base_url || 'http://localhost:11434');
+
+        // Automatically detect models for both endpoints on mount
+        handleFetchModels(fetched.llm_base_url, fetched.llm_api_key, fetched.llm_model);
+        handleTestOllama(fetched.ollama_base_url, fetched.ollama_model);
       }
     } catch (err) {
       console.error('Failed to load settings:', err);
@@ -134,14 +278,27 @@ export default function SettingsPage() {
     setSaving(true);
     setToast(null);
 
+    const payload = {
+      ...form,
+      llm_base_url: form.llm_base_url || 'https://openrouter.ai/api/v1',
+      llm_model:
+        form.llm_model || availableModels[0] || 'google/gemini-flash-1.5',
+      ollama_base_url: form.ollama_base_url || 'http://localhost:11434',
+      ollama_model:
+        form.ollama_model ||
+        (ollamaStatus?.models && ollamaStatus.models[0]) ||
+        'llama3.2',
+    };
+
     try {
       const res = await fetch('/api/v1/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.status === 'success') {
+        setForm(payload);
         setToast({
           type: 'success',
           message: 'Settings saved and encrypted in database!',
@@ -159,83 +316,6 @@ export default function SettingsPage() {
       });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleFetchModels = async () => {
-    setFetchingModels(true);
-    setFetchModelsStatus(null);
-    try {
-      const res = await fetch('/api/v1/settings/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          llm_base_url: form.llm_base_url,
-          llm_api_key: form.llm_api_key,
-        }),
-      });
-      const data = await res.json();
-      if (data.status === 'success' && Array.isArray(data.models) && data.models.length > 0) {
-        setAvailableModels(data.models);
-        setFetchModelsStatus({
-          connected: true,
-          message: data.message || `Found ${data.models.length} model(s).`,
-        });
-        setCustomModelMode(false);
-        if (!form.llm_model || !data.models.includes(form.llm_model)) {
-          setForm((prev) => ({ ...prev, llm_model: data.models[0] }));
-        }
-      } else {
-        setFetchModelsStatus({
-          connected: false,
-          message: data.message || 'No models returned from endpoint.',
-        });
-      }
-    } catch (err: any) {
-      setFetchModelsStatus({
-        connected: false,
-        message: err.message || 'Failed to fetch models.',
-      });
-    } finally {
-      setFetchingModels(false);
-    }
-  };
-
-  const handleTestOllama = async (targetBaseUrl?: string) => {
-    setTestingOllama(true);
-    setOllamaStatus(null);
-
-    const baseUrl = targetBaseUrl || form.ollama_base_url || 'http://localhost:11434';
-
-    try {
-      const res = await fetch('/api/v1/settings/test-ollama', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ollama_base_url: baseUrl }),
-      });
-      const data = await res.json();
-      setOllamaStatus({
-        connected: data.connected,
-        models: data.models || [],
-        message: data.message,
-      });
-      if (data.connected && Array.isArray(data.models) && data.models.length > 0) {
-        setCustomOllamaModelMode(false);
-        setForm((prev) => {
-          if (!prev.ollama_model || !data.models.includes(prev.ollama_model)) {
-            return { ...prev, ollama_model: data.models[0] };
-          }
-          return prev;
-        });
-      }
-    } catch (err: any) {
-      setOllamaStatus({
-        connected: false,
-        models: [],
-        message: err.message,
-      });
-    } finally {
-      setTestingOllama(false);
     }
   };
 
@@ -366,7 +446,7 @@ export default function SettingsPage() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={handleFetchModels}
+                  onClick={() => handleFetchModels()}
                   disabled={fetchingModels || !form.llm_base_url}
                 >
                   {fetchingModels ? (
@@ -406,6 +486,7 @@ export default function SettingsPage() {
                       onClick={() => {
                         setForm((p) => ({ ...p, llm_base_url: url }));
                         setFetchModelsStatus(null);
+                        handleFetchModels(url, form.llm_api_key);
                       }}
                       className="text-caption h-7 px-2.5"
                     >
@@ -422,6 +503,7 @@ export default function SettingsPage() {
                     placeholder="https://openrouter.ai/api/v1"
                     value={form.llm_base_url}
                     onChange={handleChange}
+                    onBlur={() => handleFetchModels(form.llm_base_url, form.llm_api_key)}
                     autoComplete="off"
                   />
                   <Input
@@ -439,27 +521,30 @@ export default function SettingsPage() {
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <Label htmlFor="llm-model-input">Model ID</Label>
-                    {availableModels.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setCustomModelMode(!customModelMode)}
-                        className="h-7 text-caption text-primary hover:text-red-300 p-0"
-                      >
-                        {customModelMode ? 'Select from list' : 'Enter custom model ID'}
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCustomModelMode(!customModelMode)}
+                      className="h-7 text-caption text-primary hover:text-red-300 p-0"
+                    >
+                      {customModelMode ? 'Select from list' : 'Enter custom model ID'}
+                    </Button>
                   </div>
-                  {availableModels.length > 0 && !customModelMode ? (
+                  {!customModelMode ? (
                     <select
                       id="llm-model-input"
                       name="llm_model"
                       value={form.llm_model}
                       onChange={handleChange}
-                      className="w-full h-10 px-3 rounded-lg bg-bg-input border border-border text-text-primary text-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="w-full h-10 px-3 rounded-lg bg-bg-input border border-border text-text-primary text-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer"
                     >
-                      {availableModels.map((m) => (
+                      {form.llm_model &&
+                        !availableModels.includes(form.llm_model) &&
+                        !FALLBACK_LLM_MODELS.includes(form.llm_model) && (
+                          <option value={form.llm_model}>{form.llm_model} (current)</option>
+                        )}
+                      {(availableModels.length > 0 ? availableModels : FALLBACK_LLM_MODELS).map((m) => (
                         <option key={m} value={m}>
                           {m}
                         </option>
@@ -538,35 +623,41 @@ export default function SettingsPage() {
                   placeholder="http://localhost:11434"
                   value={form.ollama_base_url}
                   onChange={handleChange}
+                  onBlur={() => handleTestOllama(form.ollama_base_url)}
                 />
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <Label htmlFor="ollama-model-input">Detected Models</Label>
-                    {ollamaStatus?.models && ollamaStatus.models.length > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setCustomOllamaModelMode(!customOllamaModelMode)}
-                        className="h-7 text-caption text-primary hover:text-red-300 p-0"
-                      >
-                        {customOllamaModelMode
-                          ? 'Select from detected list'
-                          : 'Enter custom model name'}
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCustomOllamaModelMode(!customOllamaModelMode)}
+                      className="h-7 text-caption text-primary hover:text-red-300 p-0"
+                    >
+                      {customOllamaModelMode
+                        ? 'Select from detected list'
+                        : 'Enter custom model name'}
+                    </Button>
                   </div>
-                  {ollamaStatus?.models &&
-                  ollamaStatus.models.length > 0 &&
-                  !customOllamaModelMode ? (
+                  {!customOllamaModelMode ? (
                     <select
                       id="ollama-model-input"
                       name="ollama_model"
                       value={form.ollama_model}
                       onChange={handleChange}
-                      className="w-full h-10 px-3 rounded-lg bg-bg-input border border-border text-text-primary text-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="w-full h-10 px-3 rounded-lg bg-bg-input border border-border text-text-primary text-body-sm focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 cursor-pointer"
                     >
-                      {ollamaStatus.models.map((m) => (
+                      {form.ollama_model &&
+                        ollamaStatus?.models &&
+                        !ollamaStatus.models.includes(form.ollama_model) &&
+                        !FALLBACK_OLLAMA_MODELS.includes(form.ollama_model) && (
+                          <option value={form.ollama_model}>{form.ollama_model} (current)</option>
+                        )}
+                      {(ollamaStatus?.models && ollamaStatus.models.length > 0
+                        ? ollamaStatus.models
+                        : FALLBACK_OLLAMA_MODELS
+                      ).map((m) => (
                         <option key={m} value={m}>
                           {m}
                         </option>
