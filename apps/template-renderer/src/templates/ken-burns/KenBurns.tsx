@@ -9,7 +9,13 @@ export const KenBurns: React.FC<{ model?: any; params?: any; wordTimings?: any[]
   const { fps, durationInFrames } = useVideoConfig();
   const frame = useCurrentFrame();
 
-  const rawAssetUrl = model?.scenes?.[0]?.assetUrl || params?.assetUrl || params?.asset_url || '';
+  const currentScene = model?.scenes?.find(
+    (s: any) => frame >= s.startFrame && frame < s.startFrame + s.durationInFrames
+  ) || model?.scenes?.[0] || {};
+
+  const sceneFrame = Math.max(0, frame - (currentScene?.startFrame || 0));
+  const sceneDuration = currentScene?.durationInFrames || durationInFrames;
+  const rawAssetUrl = currentScene?.assetUrl || model?.scenes?.[0]?.assetUrl || params?.assetUrl || params?.asset_url || '';
   
   // Format local Windows/Unix paths for Chromium Img/Video elements
   let assetUrl = rawAssetUrl;
@@ -25,14 +31,14 @@ export const KenBurns: React.FC<{ model?: any; params?: any; wordTimings?: any[]
     assetUrl.endsWith('.webp') || assetUrl.includes('pollinations.ai') || assetUrl.includes('pexels.com/photos')
   );
 
-  // Smooth cinematic pan & zoom spring animation
+  // Smooth cinematic pan & zoom spring animation per scene
   const progress = spring({
-    frame,
+    frame: sceneFrame,
     fps,
     config: {
       damping: 200,
     },
-    durationInFrames: Math.max(durationInFrames, 30),
+    durationInFrames: Math.max(sceneDuration, 30),
   });
 
   const scale = interpolate(progress, [0, 1], [1.0, 1.15]);

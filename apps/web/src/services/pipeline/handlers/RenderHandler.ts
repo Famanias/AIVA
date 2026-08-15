@@ -54,12 +54,14 @@ export class RenderHandler extends BaseHandler {
         const sceneWordTimings = sceneVo?.word_timings || (Array.isArray(wordTimings) ? wordTimings : [])
         const sceneAudioUrl = sceneVo?.audio_url || audioUrl || ''
 
+        const sceneDuration = Number(s.duration || sceneVo?.duration_sec || sceneVo?.duration || 4.5)
+
         const sceneIR: PipelineIR = {
           version: 1,
           templateFamily: style,
           metadata: {
             projectId: context.project.id,
-            jobId: context.job.id,
+            jobId: `${context.job.id}_scene_${seq}`,
             topic: context.project.topic,
             canvasConfig: {
               width,
@@ -80,6 +82,7 @@ export class RenderHandler extends BaseHandler {
               action: s.animationAction || s.action || 'standing',
               transition: s.transition || 'fade',
               assetUrl: s.assetUrl || s.asset_manifest?.asset_slots?.background?.storage_key || s.asset_manifest?.background?.storage_key || '',
+              duration: sceneDuration,
             },
           ],
         }
@@ -109,12 +112,55 @@ export class RenderHandler extends BaseHandler {
       })
     )
 
-    // 3. Resolve master overlay for composition
-    // If single scene, use directly. If multi-scene, use the first or concatenated master overlay.
+    // 3. Resolve master continuous overlay for composition
     let outputVideoUrl = sceneRenderResults[0]?.renderUrl || ''
-    if (sceneRenderResults.length > 1) {
-      // Set the first scene's clip as primary or master
-      outputVideoUrl = sceneRenderResults[0]?.renderUrl || ''
+    if (scenes.length > 1) {
+      await context.logger.info(`Dispatching full multi-scene master timeline (${scenes.length} scenes) to Render Engine...`)
+      
+      const masterIR: PipelineIR = {
+        version: 1,
+        templateFamily: style,
+        metadata: {
+          projectId: context.project.id,
+          jobId: `${context.job.id}_master`,
+          topic: context.project.topic,
+          canvasConfig: {
+            width,
+            height,
+            aspectRatio,
+            fps: 30,
+          },
+        },
+        voice: {
+          wordTimings: Array.isArray(wordTimings) ? wordTimings : [],
+          audioUrl: voice.master_audio_url || voice.audioUrl || audioUrl || '',
+        },
+        scenes: scenes.map((s: any, index: number) => {
+          const seq = s.sequence_number || index + 1
+          const sceneVo = Array.isArray(voice.voiceovers)
+            ? voice.voiceovers.find((vo: any) => vo.sequence_number === seq)
+            : null
+          const sceneDuration = Number(s.duration || sceneVo?.duration_sec || sceneVo?.duration || 4.5)
+
+          return {
+            id: String(seq),
+            text: s.scriptSegment || s.text || '',
+            visual_type: s.visualType || s.visual_type || 'stickman_action',
+            action: s.animationAction || s.action || 'standing',
+            transition: s.transition || 'fade',
+            assetUrl: s.assetUrl || s.asset_manifest?.asset_slots?.background?.storage_key || s.asset_manifest?.background?.storage_key || '',
+            duration: sceneDuration,
+          }
+        }),
+      }
+
+      const masterResponse = await workerGateway.execute<any>(`${renderUrl}/render`, masterIR, 15 * 60 * 1000)
+      if (masterResponse.status === 'success' && masterResponse.result?.outputs?.video) {
+        outputVideoUrl = masterResponse.result.outputs.video
+        await context.logger.info(`Master continuous overlay rendered successfully: ${outputVideoUrl}`)
+      } else {
+        await context.logger.warn(`Master overlay rendering failed, falling back to primary scene overlay. Error: ${masterResponse.error || 'Unknown'}`)
+      }
     }
 
     // 4. Update Pipeline State with Render Result

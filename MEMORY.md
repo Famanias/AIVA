@@ -152,10 +152,15 @@ When `llm_provider` is `openai_compatible` but `llm_api_key` is empty (such as i
 
 `RenderHandler` dispatches single-scene `PipelineIR` payloads to `template-renderer` in parallel via `Promise.all`, persisting each scene's individual transparent WebM overlay path into `public.scenes.render_url`. When scenes are edited in the Studio UI, `rerender_single_scene` re-synthesizes voiceover, invokes `template-renderer` for the modified scene's visual overlay, and re-stitches master composition using cached assets.
 
+## AD-022 — Multi-Scene Master Overlay & Guaranteed Fallback Composition Architecture
+
+To prevent video truncation caused by per-scene overlay scoping, `RenderHandler` generates a continuous full-timeline `masterIR` across all scenes for the master composition overlay (`master_overlay.webm`), while maintaining parallel single-scene renders for timeline editor preview cache. `AssetSelectionStrategy` includes a guaranteed local solid/gradient canvas provider (`LocalSolidFallbackProvider`), `FilterGraphBuilder` injects a synthetic background canvas when background tracks are empty, and `Encoder` loops video backgrounds (`-stream_loop -1`) with explicit `-t` total duration anchoring. Subtitle generation applies phrase-chunking (2–4 words per dialogue line) for optimal viewer retention.
+
 ---
 
 # Discoveries
 
 - **Groq API Rate Limits**: `llama-3.3-70b-versatile` has strict 100k Tokens-Per-Day (TPD) limits, which get exhausted very quickly in a full pipeline test. Switching to `llama-3.1-8b-instant` provides a separate, faster quota (though still subject to 6,000 Tokens-Per-Minute limits for large requests). The pipeline MUST gracefully handle or backoff on HTTP 429/413 rate limit errors from Groq.
 - **Next.js 16 Proxy Convention**: Next.js 16 Turbopack replaces `middleware.ts` with `src/proxy.ts`. Attempting to define both triggers a build-time fatal error (`middleware-to-proxy`). `src/proxy.ts` must remain the single entrypoint for auth token extraction and proxy headers.
+
 

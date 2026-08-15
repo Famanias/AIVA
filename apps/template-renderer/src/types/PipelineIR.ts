@@ -32,5 +32,6 @@ export interface PipelineIR {
     transition?: string
     assetQuery?: string
     assetUrl?: string
+    duration?: number
   }>
 }

@@ -76,24 +76,37 @@ export class CompositionHandler extends BaseHandler {
       mime_type: 'audio/mp3'
     }
 
-    // Resolve Word Timings
+    // Resolve Word Timings with cumulative global offsets
     let wordTimings = voice.wordTimings || voice.word_timings || []
     if ((!wordTimings || wordTimings.length === 0) && Array.isArray(voice.subtitles)) {
-      wordTimings = voice.subtitles.flatMap((s: any) => s.word_timings || [])
+      let cumulativeOffset = 0
+      wordTimings = voice.subtitles.flatMap((s: any) => {
+        const sceneTimings = (s.word_timings || s.wordTimings || []).map((w: any) => ({
+          word: w.word,
+          start: Math.round((Number(w.start || 0) + cumulativeOffset) * 1000) / 1000,
+          end: Math.round((Number(w.end || 0) + cumulativeOffset) * 1000) / 1000
+        }))
+        cumulativeOffset += Number(s.duration || s.duration_sec || 0)
+        return sceneTimings
+      })
     }
+
+    const totalDuration = Array.isArray(scenes) && scenes.length > 0
+      ? scenes.reduce((acc: number, s: any) => acc + Number(s.duration || 4.5), 0)
+      : (bgTracks.length > 0 ? bgTracks.reduce((acc: number, t: any) => acc + Number(t.duration || 4.5), 0) : 10.0)
 
     // 2. Map PipelineState to CompositionModel contract
     const compositionModel = {
       trace_id: context.job.id,
       project_id: context.project.id,
       job_id: context.job.id,
-      overlay_track: {
+      overlay_track: state.render?.outputUrl ? {
         id: 'remotion_overlay',
         type: 'video',
         storage_key: state.render.outputUrl,
-        duration: Array.isArray(scenes) ? scenes.reduce((acc: number, s: any) => acc + (s.duration || 4.5), 0) : 10.0,
+        duration: totalDuration,
         mime_type: 'video/webm'
-      },
+      } : null,
       background_tracks: bgTracks,
       voice_track: voiceUrl ? {
         id: 'voice_main',

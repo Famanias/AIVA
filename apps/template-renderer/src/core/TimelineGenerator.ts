@@ -25,33 +25,43 @@ export function generateTimeline(ir: PipelineIR, config: RenderConfig): Composit
     lastEndFrame = Math.max(lastEndFrame, endFrame)
   }
 
-  // Calculate scenes timeline based on word timings (MVP: equal distribution or derived from chunks)
-  // For P1, we assume the IR has pre-segmented the text, but the IR doesn't have exact scene timings yet.
-  // We'll distribute the scenes evenly across the total duration for now.
+  // Calculate scenes timeline based on scene duration or word timings
   const scenes: Scene[] = []
   
-  const totalDurationInFrames = lastEndFrame > 0 ? lastEndFrame : 30 * fps // fallback to 30s
+  let totalDurationInFrames = lastEndFrame > 0 ? lastEndFrame : 30 * fps // fallback to 30s
   
   if (ir.scenes.length > 0) {
-    const framesPerScene = Math.floor(totalDurationInFrames / ir.scenes.length)
+    const hasExplicitDurations = ir.scenes.some(s => typeof s.duration === 'number' && s.duration > 0)
+    let currentStartFrame = 0
     
     ir.scenes.forEach((irScene, index) => {
       const isLast = index === ir.scenes.length - 1
-      const startFrame = index * framesPerScene
-      // Give remainder frames to the last scene
-      const durationInFrames = isLast 
-        ? totalDurationInFrames - startFrame 
-        : framesPerScene
+      let durationInFrames = 0
+
+      if (hasExplicitDurations && typeof irScene.duration === 'number' && irScene.duration > 0) {
+        durationInFrames = Math.max(1, Math.round(irScene.duration * fps))
+      } else {
+        const framesPerScene = Math.floor(totalDurationInFrames / ir.scenes.length)
+        durationInFrames = isLast 
+          ? Math.max(1, totalDurationInFrames - currentStartFrame) 
+          : framesPerScene
+      }
 
       scenes.push({
         id: irScene.id,
-        startFrame,
+        startFrame: currentStartFrame,
         durationInFrames,
         assetUrl: irScene.assetUrl,
         transition: irScene.transition,
         characterAction: irScene.action
       })
+
+      currentStartFrame += durationInFrames
     })
+
+    if (hasExplicitDurations && currentStartFrame > 0) {
+      totalDurationInFrames = Math.max(totalDurationInFrames, currentStartFrame)
+    }
   }
 
   return {

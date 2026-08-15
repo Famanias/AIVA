@@ -1,6 +1,7 @@
 from typing import List, Optional
 from app.models.asset import RankedCandidate, AssetConfig
 from app.providers.asset_providers import IAssetProvider, PexelsProvider, PixabayProvider, PollinationsProvider, SDXLProvider
+from app.providers.fallback_provider import LocalSolidFallbackProvider
 from app.services.asset_search import AssetSearchService
 from app.services.asset_ranker import AssetRanker
 from app.services.asset_downloader import AssetDownloader
@@ -20,7 +21,8 @@ class AssetSelectionStrategy:
             PexelsProvider(),
             PixabayProvider(),
             PollinationsProvider(),
-            SDXLProvider()
+            SDXLProvider(),
+            LocalSolidFallbackProvider(),
         ]
 
     async def resolve_for_scene(self, scene_text: str, query: str, config: AssetConfig) -> Optional[RankedCandidate]:
@@ -39,8 +41,8 @@ class AssetSelectionStrategy:
                     
                 best_candidate = ranked[0]
                 
-                # Check semantic threshold (unless it's a generated asset which always scores 1.0)
-                is_generated = provider.name in ("pollinations", "sdxl")
+                # Check semantic threshold (unless it's a generated or fallback asset which always scores 1.0)
+                is_generated = provider.name in ("pollinations", "sdxl", "local_fallback")
                 if best_candidate.score < config.semantic_threshold and not is_generated:
                     print(f"[AssetSelectionStrategy] Best match for '{query}' on {provider.name} scored {best_candidate.score}, which is below threshold {config.semantic_threshold}. Skipping provider.")
                     continue

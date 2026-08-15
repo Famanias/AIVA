@@ -42,11 +42,20 @@ export class VoiceoverHandler extends BaseHandler {
       updatedState.voice.audioUrl = response.data.master_audio_url || response.data.voiceovers[0]?.audio_url
       updatedState.voice.master_audio_url = response.data.master_audio_url || response.data.voiceovers[0]?.audio_url
 
-      // Update voiceover_url and duration on public.scenes in PostgreSQL
+      // Update voiceover_url and duration on public.scenes in PostgreSQL and state.scenes
       for (const [idx, vo] of response.data.voiceovers.entries()) {
         const seq = Number(vo.sequence_number || (idx + 1))
-        const duration = Number(vo.duration || 0)
+        const duration = Number(vo.duration_sec || vo.duration || 0)
         const audioUrl = vo.audio_url || vo.audioUrl || null
+
+        // Sync duration back to state.scenes
+        if (Array.isArray(updatedState.scenes)) {
+          const matchedScene = updatedState.scenes.find((s: any) => Number(s.sequence_number || s.sequenceNumber) === seq) || updatedState.scenes[idx]
+          if (matchedScene && duration > 0) {
+            matchedScene.duration = duration
+          }
+        }
+
         await query(
           `UPDATE public.scenes 
            SET voiceover_url = COALESCE($1, voiceover_url), 

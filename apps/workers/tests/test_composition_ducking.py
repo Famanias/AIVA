@@ -176,3 +176,43 @@ async def test_handle_voiceover_stage_multi_scene_concatenation():
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
+@pytest.mark.asyncio
+async def test_fallback_asset_provider():
+    from app.providers.fallback_provider import LocalSolidFallbackProvider
+    provider = LocalSolidFallbackProvider()
+    candidates = await provider.search("Historical aviation breakthrough")
+    assert len(candidates) == 1
+    cand = candidates[0]
+    assert cand.score == 1.0
+    assert cand.provider == "local_fallback"
+    assert os.path.exists(cand.raw_metadata["url"])
+
+def test_subtitle_phrase_chunking():
+    word_timings = [
+        {"word": "The", "start": 0.0, "end": 0.3},
+        {"word": "quick", "start": 0.3, "end": 0.6},
+        {"word": "brown", "start": 0.6, "end": 0.9},
+        {"word": "fox", "start": 0.9, "end": 1.2},
+        {"word": "jumps", "start": 1.5, "end": 1.8},
+        {"word": "over", "start": 1.8, "end": 2.1},
+    ]
+    chunks = SubtitleGenerator._chunk_words(word_timings, max_words=4)
+    assert len(chunks) == 2
+    assert chunks[0]["text"] == "The quick brown fox"
+    assert chunks[1]["text"] == "jumps over"
+    assert chunks[0]["start"] == 0.0
+
+def test_filter_graph_synthetic_fallback_when_backgrounds_empty():
+    model = CompositionModel(
+        job_id="test_synthetic_bg",
+        background_tracks=[],
+        overlay_track=MediaReference(id="ov1", type="video", storage_key="overlay.webm", duration=10.0, mime_type="video/webm"),
+        voice_track=MediaReference(id="v1", type="audio", storage_key="voice.mp3", duration=10.0, mime_type="audio/mp3"),
+        word_timings=[],
+        output_settings=EncodingProfile(width=1080, height=1920, fps=30)
+    )
+    inputs, filter_complex, v_pad, a_pad = FilterGraphBuilder.build(model)
+    assert "bg_synthetic" in filter_complex
+    assert "eof_action=pass" in filter_complex
+
+

@@ -64,10 +64,13 @@ class CompositionEngine:
             # 6. Result
             log_progress("Composition Finished", 100)
             
-            # Calculate final duration based on inputs (simplified for MVP)
-            final_duration = max(t.duration for t in model.background_tracks) if model.background_tracks else 0
-            if model.overlay_track and model.overlay_track.duration > final_duration:
-                final_duration = model.overlay_track.duration
+            # Calculate final duration based on inputs
+            bg_dur = sum(t.duration for t in model.background_tracks if t.duration) if model.background_tracks else 0.0
+            overlay_dur = model.overlay_track.duration if (model.overlay_track and model.overlay_track.duration) else 0.0
+            voice_dur = model.voice_track.duration if (model.voice_track and model.voice_track.duration) else 0.0
+            final_duration = max(bg_dur, overlay_dur, voice_dur)
+            if final_duration <= 0.0:
+                final_duration = 10.0
             
             return CompositionResult(
                 output_reference=MediaReference(

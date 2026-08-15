@@ -60,11 +60,14 @@ class FilterGraphBuilder:
             filters.append(f"[{bg_idx_start}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},setsar=1,trim=duration={dur},setpts=PTS-STARTPTS[bg_scaled]")
             current_bg = "[bg_scaled]"
         else:
-            current_bg = ""
+            # Fallback synthetic dark background plate if background_tracks is empty
+            fps = model.output_settings.fps or 30
+            filters.append(f"color=c=0x0a0e1a:s={width}x{height}:r={fps}[bg_synthetic]")
+            current_bg = "[bg_synthetic]"
 
         # Overlay Remotion visual layer onto background
         if overlay_idx >= 0 and current_bg:
-            filters.append(f"{current_bg}[{overlay_idx}:v]overlay=0:0:shortest=1[v_mixed]")
+            filters.append(f"{current_bg}[{overlay_idx}:v]overlay=0:0:eof_action=pass[v_mixed]")
             video_out_pad = "[v_mixed]"
         elif overlay_idx >= 0:
             video_out_pad = f"[{overlay_idx}:v]"

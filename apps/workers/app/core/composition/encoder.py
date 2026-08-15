@@ -60,6 +60,9 @@ class Encoder:
             if is_image:
                 dur = str(bg.duration or 4.5)
                 cmd.extend(["-loop", "1", "-t", dur])
+            else:
+                # Loop video backgrounds so short stock clips do not starve the concat filter
+                cmd.extend(["-stream_loop", "-1"])
             cmd.extend(["-i", inp])
 
         if model.overlay_track:
@@ -98,6 +101,16 @@ class Encoder:
         if audio_pad:
             cmd.extend(["-c:a", "aac", "-b:a", "192k"])
             
+        # Total Duration Anchoring (prevents unbounded audio or truncated video)
+        total_duration = sum(t.duration for t in model.background_tracks if t.duration)
+        if total_duration <= 0 and model.overlay_track and model.overlay_track.duration:
+            total_duration = model.overlay_track.duration
+        if total_duration <= 0 and model.voice_track and model.voice_track.duration:
+            total_duration = model.voice_track.duration
+
+        if total_duration > 0:
+            cmd.extend(["-t", str(round(total_duration, 2))])
+
         cmd.append(output_path)
         
         # Execute

@@ -6,7 +6,7 @@ import { CompositionModel } from '../../types/CompositionModel'
 export class DocumentaryTemplate implements IRenderingTemplate {
   id = 'documentary'
   displayName = 'Ken-Burns Documentary'
-  supportedAspectRatios = ['16:9', '9:16']
+  supportedAspectRatios = ['16:9', '9:16', '1:1']
   supportedFrameRates = [30, 60]
 
   validate(model: CompositionModel): void {

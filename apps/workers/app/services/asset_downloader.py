@@ -25,6 +25,20 @@ class AssetDownloader:
             
         temp_path = os.path.join(temp_dir, f"{os.urandom(8).hex()}_{filename}")
         
+        # Handle local files directly
+        if url.startswith("file:///"):
+            local_path = url[8:]
+            if os.name == 'nt' and local_path.startswith('/') and len(local_path) > 2 and local_path[2] == ':':
+                local_path = local_path[1:]
+            if os.path.exists(local_path):
+                import shutil
+                shutil.copy2(local_path, temp_path)
+                return temp_path
+        elif os.path.exists(url):
+            import shutil
+            shutil.copy2(url, temp_path)
+            return temp_path
+
         print(f"[AssetDownloader] Downloading {url} to {temp_path}")
         
         async with aiohttp.ClientSession() as session:

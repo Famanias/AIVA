@@ -5,7 +5,7 @@ import { CompositionModel } from '../../types/CompositionModel'
 export class StickmanTemplate implements IRenderingTemplate {
   id = 'stickman'
   displayName = 'Animated Stickman'
-  supportedAspectRatios = ['9:16']
+  supportedAspectRatios = ['9:16', '16:9', '1:1']
   supportedFrameRates = [30]
 
   validate(model: CompositionModel): void {
