@@ -90,11 +90,12 @@ async def rerender_single_scene(
         aspect_ratio = "9:16"
         width = 1080
         height = 1920
-        video_style = "stickman"
+        video_style = "documentary"
 
         if proj_row is not None:
-            raw_style = proj_row.get("video_style") or "stickman"
-            video_style = "stickman" if raw_style == "stickman_animation" else raw_style
+            raw_style = proj_row.get("video_style") or "documentary"
+            video_style = "stickman" if raw_style in ("stickman", "stickman_animation") else "documentary"
+
 
             try:
                 state_raw = proj_row["state_payload"] if "state_payload" in proj_row else None

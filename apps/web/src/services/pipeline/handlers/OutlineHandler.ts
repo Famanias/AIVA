@@ -21,7 +21,7 @@ export class OutlineHandler extends BaseHandler {
       trace_id: context.job.id,
       project_id: context.project.id,
       topic: context.project.topic,
-      video_style: context.project.video_style || 'stickman_animation',
+      video_style: context.project.video_style || 'cinematic',
       research_summary: context.state.research?.researchSummary || JSON.stringify(context.state.research),
       language: context.project.language || 'en',
       generation_profile: activeProfile,

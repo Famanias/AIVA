@@ -272,6 +272,59 @@ def test_dynamic_ass_subtitle_generation():
         if os.path.exists(ass_169):
             os.remove(ass_169)
 
+@pytest.mark.asyncio
+async def test_asset_strategy_visual_type_routing():
+    from app.services.asset_strategy import AssetSelectionStrategy
+    from app.repositories.asset_repository import LocalCacheRepository
+    from app.models.asset import AssetConfig
+    import tempfile
+    import shutil
+
+    tmp_storage = tempfile.mkdtemp()
+    try:
+        repo = LocalCacheRepository(base_dir=tmp_storage)
+        strategy = AssetSelectionStrategy(repository=repo)
+        cfg = AssetConfig(max_candidates=1, semantic_threshold=0.0)
+
+
+
+        # 1. Test AI image routing resolves without error
+        candidate_ai = await strategy.resolve_for_scene(
+            scene_text="Glowing human brain firing neurons",
+            query="caffeine neural activity",
+            config=cfg,
+            visual_type="ai_image",
+            visual_prompt="Hyperdetailed cinematic 3d render of human synapses firing neon blue"
+        )
+        assert candidate_ai is not None
+        assert candidate_ai.reference is not None
+
+        # 2. Test B-Roll stock video routing resolves without error
+        candidate_broll = await strategy.resolve_for_scene(
+            scene_text="Pouring hot espresso into glass",
+            query="espresso coffee beans pour",
+            config=cfg,
+            visual_type="broll"
+        )
+        assert candidate_broll is not None
+        assert candidate_broll.reference is not None
+    finally:
+        shutil.rmtree(tmp_storage, ignore_errors=True)
+
+def test_build_script_director_prompt_dynamic():
+    from app.prompts import build_script_director_prompt
+    rendered = build_script_director_prompt(
+        topic="Caffeine and sleep",
+        language="en",
+        outline="1. Hook\n2. Science\n3. Solution",
+    )
+    assert "You are an elite video scriptwriter and visual director" in rendered.system_prompt
+    assert "visual_type" in rendered.system_prompt
+    assert "broll_search_keywords" in rendered.system_prompt
+    assert "visual_prompt" in rendered.system_prompt
+    assert "stickman_animation" not in rendered.user_prompt
+
+
 
 
 

@@ -21,11 +21,21 @@ async def resolve_scene(scene: Dict[str, Any], config: AssetConfig) -> Dict[str,
         print(f"[AssetRouter] Skipping scene {scene.get('id')} - already has manifest.")
         return scene
 
-    scene_text = scene.get("text") or scene.get("scriptSegment", "")
-    query = scene.get("assetQuery") or scene.get("visualPrompt") or scene_text
+    scene_text = scene.get("text") or scene.get("scriptSegment") or scene.get("script_segment", "")
+    visual_type = str(scene.get("visual_type") or scene.get("visualType") or "broll").lower()
+    broll_keywords = scene.get("brollSearchKeywords") or scene.get("broll_search_keywords") or scene.get("assetQuery")
+    visual_prompt = scene.get("visualPrompt") or scene.get("visual_prompt") or ""
+    query = broll_keywords or visual_prompt or scene_text
 
-    # 2. Strategy Execution
-    candidate = await asset_strategy.resolve_for_scene(scene_text, query, config)
+    # 2. Strategy Execution with dynamic visual type routing
+    candidate = await asset_strategy.resolve_for_scene(
+        scene_text=scene_text,
+        query=query,
+        config=config,
+        visual_type=visual_type,
+        visual_prompt=visual_prompt
+    )
+
 
     # 3. Build Immutable Manifest
     manifest = AssetManifest(

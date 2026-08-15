@@ -33,16 +33,17 @@ export class ScriptHandler extends BaseHandler {
       project_id: context.project.id,
       topic: context.project.topic,
       custom_script: hasCustomScript ? customScript : undefined,
-      video_style: context.project.video_style || 'stickman_animation',
+      video_style: context.project.video_style || 'cinematic',
       outline: state.outline || [],
-      visual_type_weights: { 'character_animation': 0.7, 'broll': 0.3 },
-      allowed_templates: ['character_animation', 'broll', 'ai_image'],
+      visual_type_weights: {},
+      allowed_templates: ['broll', 'stock_photo', 'ai_image', 'ai_video', 'kinetic_typography'],
       default_camera_pacing: 'fast',
       rig_action_list: ['talk', 'point', 'shrug', 'walk', 'idle'],
       typography_template_list: [],
       language: context.project.language || 'en',
       generation_profile: activeProfile,
     }, this.getTimeoutMs())
+
 
     if (response.status !== 'success') {
       throw new Error(`Script generation failed: ${response.error || 'Unknown error'}`)

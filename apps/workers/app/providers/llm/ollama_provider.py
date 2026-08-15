@@ -88,11 +88,20 @@ class OllamaProvider(ILLMProvider):
             raw = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
             raw = re.sub(r"\s*```$", "", raw.strip(), flags=re.MULTILINE)
 
-            return json.loads(raw)
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                # Try extracting substring between first { and last }
+                start_idx = raw.find("{")
+                end_idx = raw.rfind("}")
+                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                    return json.loads(raw[start_idx:end_idx + 1])
+                raise
         except json.JSONDecodeError as e:
-            logger.error("ollama_generate_json_parse_failed", error=str(e))
+            logger.error("ollama_generate_json_parse_failed", error=str(e), raw_output=raw[:200] if 'raw' in locals() else '')
             raise LLMProviderError("ollama", f"Response was not valid JSON: {e}", e)
         except Exception as e:
+
             logger.error("ollama_generate_json_failed", error=str(e))
             raise LLMProviderError("ollama", f"generate_json failed: {e}", e)
 

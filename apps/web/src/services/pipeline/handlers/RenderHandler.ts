@@ -22,8 +22,13 @@ export class RenderHandler extends BaseHandler {
       return null // Gracefully exit to prevent BullMQ retry loops
     }
 
-    let style = (context.project as any).video_style || 'stickman'
-    if (style === 'stickman_animation') style = 'stickman'
+    let style = (context.project as any).video_style || 'documentary'
+    if (style === 'stickman_animation' || style === 'stickman') {
+      style = 'stickman'
+    } else {
+      style = 'documentary'
+    }
+
 
     const wordTimings = voice.wordTimings || voice.word_timings || stateAny['05_subtitles']?.subtitles || []
     const audioUrl = voice.audioUrl || (Array.isArray(voice.voiceovers) && voice.voiceovers[0]?.audio_url) || ''

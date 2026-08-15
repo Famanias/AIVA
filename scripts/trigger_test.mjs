@@ -17,7 +17,6 @@ That is why you crash.`
 
   const payload = {
     topic: "The Truth About Caffeine and Energy",
-    style: "stickman_animation",
     input_mode: "custom_script",
     custom_script: customScript,
     aspect_ratio: "9:16",
@@ -25,6 +24,7 @@ That is why you crash.`
     voice_id: "en-US-AriaNeural",
     persona: "Informative"
   }
+
 
   console.log('Sending request to POST /api/v1/projects...')
   const createRes = await fetch(`${API_BASE}/api/v1/projects`, {

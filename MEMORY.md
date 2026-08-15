@@ -163,6 +163,11 @@ The pipeline architecture has been hardened with deep seam contracts across `@ai
 2. **Self-Contained Template Layering**: `CharacterRig.tsx` incorporates an active `BackgroundLayer` rendering scene media (`assetUrl`) with dark ambient gradient fallback, ensuring Remotion outputs and single-scene timeline previews are complete and free of black frames.
 3. **Dynamic Canvas Subtitle Rendering**: `SubtitleGenerator` computes `.ass` subtitle safe zones (`PlayResX`, `PlayResY`, `MarginV`) and typography size dynamically from `CanvasConfig`, ensuring crisp alignment across 9:16, 16:9, and 1:1 viewports.
 
+## AD-024 — Dynamic AI Visual Selection & Style Decoupling
+
+Project-wide forced visual styles have been decoupled from the generation pipeline. Instead of forcing videos into a uniform stickman or documentary template, the AI Creative Director dynamically evaluates narrative beats per scene and assigns the optimal `visual_type` (`broll`, `stock_photo`, `ai_image`, `ai_video`, `kinetic_typography`). `AssetSelectionStrategy` uses context-aware provider ordering to route queries to stock video/photo providers or generative AI engines with multi-tier fallback. The cinematic `KenBurns.tsx` motion engine serves as the universal multi-asset renderer for looping video clips, pan/zoom image physics, and subtitle safe zone contrast.
+
+
 ---
 
 # Discoveries

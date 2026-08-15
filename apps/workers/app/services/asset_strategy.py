@@ -25,11 +25,43 @@ class AssetSelectionStrategy:
             LocalSolidFallbackProvider(),
         ]
 
-    async def resolve_for_scene(self, scene_text: str, query: str, config: AssetConfig) -> Optional[RankedCandidate]:
-        for provider in self.chain:
+    async def resolve_for_scene(
+        self, 
+        scene_text: str, 
+        query: str, 
+        config: AssetConfig,
+        visual_type: str = "broll",
+        visual_prompt: str = ""
+    ) -> Optional[RankedCandidate]:
+        # Determine provider priority based on the scene's dynamic visual type
+        providers_to_try: List[IAssetProvider] = []
+        is_ai_requested = visual_type in ("ai_image", "ai_video", "generative")
+
+        if is_ai_requested:
+            # Prioritize Generative AI providers
+            providers_to_try = [
+                SDXLProvider(),
+                PollinationsProvider(),
+                PexelsProvider(),
+                PixabayProvider(),
+                LocalSolidFallbackProvider(),
+            ]
+            search_query = visual_prompt or query
+        else:
+            # Prioritize High-Definition Stock Media (Video/Photo)
+            providers_to_try = [
+                PexelsProvider(),
+                PixabayProvider(),
+                PollinationsProvider(),
+                SDXLProvider(),
+                LocalSolidFallbackProvider(),
+            ]
+            search_query = query or visual_prompt or scene_text
+
+        for provider in providers_to_try:
             try:
                 # 1. Search / Generate
-                candidates = await AssetSearchService.search(provider, query, limit=config.max_candidates)
+                candidates = await AssetSearchService.search(provider, search_query, limit=config.max_candidates)
                 
                 if not candidates:
                     continue
@@ -44,7 +76,7 @@ class AssetSelectionStrategy:
                 # Check semantic threshold (unless it's a generated or fallback asset which always scores 1.0)
                 is_generated = provider.name in ("pollinations", "sdxl", "local_fallback")
                 if best_candidate.score < config.semantic_threshold and not is_generated:
-                    print(f"[AssetSelectionStrategy] Best match for '{query}' on {provider.name} scored {best_candidate.score}, which is below threshold {config.semantic_threshold}. Skipping provider.")
+                    print(f"[AssetSelectionStrategy] Best match for '{search_query}' on {provider.name} scored {best_candidate.score}, which is below threshold {config.semantic_threshold}. Skipping provider.")
                     continue
 
                 # 3. Download
@@ -55,7 +87,7 @@ class AssetSelectionStrategy:
                 validation = AssetValidator.validate(temp_file, mime_type)
                 
                 # 5. Persist
-                origin = "generated" if provider.name == "sdxl" else "stock"
+                origin = "generated" if provider.name in ("sdxl", "pollinations") else "stock"
                 asset_ref = self.repository.save(
                     temp_file, 
                     mime_type, 
@@ -68,10 +100,11 @@ class AssetSelectionStrategy:
                 return best_candidate
                 
             except Exception as e:
-                print(f"[AssetSelectionStrategy] Provider {provider.name} failed for query '{query}': {e}")
+                print(f"[AssetSelectionStrategy] Provider {provider.name} failed for query '{search_query}': {e}")
                 # Continue to the next provider in the chain
                 continue
                 
         # If we fall through the entire chain without returning, resolution failed
         print(f"[AssetSelectionStrategy] All providers failed for scene: '{scene_text}'")
         return None
+

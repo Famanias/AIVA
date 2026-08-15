@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const {
       topic = 'Untitled Topic',
-      style = 'stickman_animation',
+      style = 'documentary',
       input_mode = 'topic',
       custom_script = '',
       aspect_ratio = '9:16',
@@ -70,6 +70,7 @@ export async function POST(req: Request) {
 
     const durationMinutes = Math.max(1, Math.round((duration_target_seconds || 60) / 60));
     const userId = user.id;
+    const dbStyle = style === 'stickman_animation' ? 'stickman_animation' : 'documentary';
 
     // 1. Insert Project into PostgreSQL
     const projectRes = await query(
@@ -77,7 +78,7 @@ export async function POST(req: Request) {
         id, user_id, title, topic, video_style, status, duration_target_minutes
       ) VALUES ($1, $2, $3, $4, $5, 'queued', $6)
       RETURNING *`,
-      [projectId, userId, title, topic, style, durationMinutes]
+      [projectId, userId, title, topic, dbStyle, durationMinutes]
     );
 
     const project = projectRes.rows[0];
@@ -90,8 +91,9 @@ export async function POST(req: Request) {
       duration_target_seconds: Number(duration_target_seconds) || 60,
       voice_id: voice_id || 'en-US-AriaNeural',
       persona: persona || 'Informative',
-      visual_style: style || 'stickman_animation',
+      visual_style: dbStyle,
     };
+
 
     const statePayload = {
       input_mode: isCustomScript ? 'custom_script' : 'topic',

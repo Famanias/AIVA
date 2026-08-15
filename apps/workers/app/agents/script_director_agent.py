@@ -125,25 +125,26 @@ class ScriptDirectorAgent:
 
         scenes = [
             SceneDirection(
-                sequence_number=s["sequence_number"],
-                script_segment=s["script_segment"],
-                visual_type=s["visual_type"],
-                animation_action=s.get("animation_action"),
-                camera_style=s.get("camera_style"),
-                typography_template=s.get("typography_template"),
+                sequence_number=s.get("sequence_number", idx + 1),
+                script_segment=s.get("script_segment") or s.get("scriptSegment") or s.get("text", ""),
+                visual_type=s.get("visual_type") or s.get("visualType") or "broll",
+                animation_action=s.get("animation_action") or s.get("animationAction"),
+                camera_style=s.get("camera_style") or s.get("cameraStyle") or "zoom_in_slow",
+                typography_template=s.get("typography_template") or s.get("typographyTemplate"),
                 background_broll_url=s.get("background_broll_url"),
-                transition=s["transition"],
-                emotional_tone=s["emotional_tone"],
-                broll_search_keywords=s.get("broll_search_keywords"),
-                visual_prompt=s.get("visual_prompt"),
+                transition=s.get("transition", "cut"),
+                emotional_tone=s.get("emotional_tone") or s.get("emotionalTone", "neutral"),
+                broll_search_keywords=s.get("broll_search_keywords") or s.get("brollSearchKeywords"),
+                visual_prompt=s.get("visual_prompt") or s.get("visualPrompt"),
             )
-            for s in raw.get("scenes", [])
+            for idx, s in enumerate(raw.get("scenes", []))
         ]
 
         result = ScriptDirectorOutput(
-            title=raw["title"],
+            title=raw.get("title", topic),
             scenes=scenes,
         )
+
 
         logger.info("script_director_agent_complete", title=result.title, num_scenes=len(result.scenes))
         return result

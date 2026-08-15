@@ -157,11 +157,19 @@ Reference: [docs/EDD.md §1.2, §7 FR-1 through FR-4, §9, §44](docs/EDD.md)
 - [x] **Dynamic Canvas Subtitle Geometry (`subtitle_generator.py`)**: Parameterized ASS header with `PlayResX`, `PlayResY`, `MarginV`, and font size scaling dynamically derived from output resolution (9:16 vertical, 16:9 horizontal, 1:1 square).
 - [x] **Windows Path Sanitization in `AssetDownloader`**: Fixed path and filename extraction in `AssetDownloader.download` to handle Windows backslashes and drive letter colons safely.
 
+## 18. Dynamic Visual Selection (Decoupled Styles)
+
+- [x] **AI Creative Director Autonomy (`prompts.py` & `script_director_agent.py`)**: Removed forced `VIDEO STYLE: stickman_animation` and hardcoded `visual_type_weights`. Empowered the LLM to choose between `broll`, `stock_photo`, `ai_image`, `ai_video`, and `kinetic_typography` per scene, generating both stock search keywords and generative AI prompts.
+- [x] **Context-Aware Multi-Tier Asset Routing (`asset_strategy.py` & `assets.py`)**: Enhanced `AssetSelectionStrategy` to dynamically prioritize stock providers (`Pexels`, `Pixabay`) for stock video/photo scenes, and generative AI providers (`SDXL`, `Pollinations`) for AI imagery, with automatic graceful fallback.
+- [x] **Universal Motion Engine Default (`RenderHandler.ts` & `KenBurns.tsx`)**: Defaulted rendering engine to the cinematic multi-asset Ken Burns template (`documentary`), providing smooth pan/zoom physics, looping video backgrounds, and subtitle contrast vignettes.
+- [x] **API & Re-render Defaults (`projects/route.ts` & `rerender_scene.py`)**: Updated project creation and single-scene rerender endpoints to default `video_style` to `'documentary'`.
+
 ---
 
 # Completed
 
-- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, Deterministic Project Artifact Persistence System with Checkpoint Resumability, Full Web App Redesign, V1 Code Review Remediation (F1-F11), Video Generation Pipeline Remediation (M1-M5), and Video Generation Architecture Deep Seam Remediation (Section 17).
+- Initialized Monorepo, Database Schema, Authentication SSR, Provider Abstraction, Python Agent Chain, Audio Processing Pipeline, Template Renderer, Asset Pipeline, Pipeline Validation Framework, Media Composition Engine, Telemetry/Cost Tracking, Deterministic Project Artifact Persistence System with Checkpoint Resumability, Full Web App Redesign, V1 Code Review Remediation (F1-F11), Video Generation Pipeline Remediation (M1-M5), Video Generation Architecture Deep Seam Remediation (Section 17), and Dynamic Visual Selection (Section 18).
+
 
 
 

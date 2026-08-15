@@ -149,13 +149,13 @@ def build_outline_prompt(
 def build_script_director_prompt(
     topic: str,
     language: str,
-    video_style: str,
-    visual_type_weights: dict[str, float],
-    allowed_templates: list[str],
-    default_camera_pacing: str,
-    rig_action_list: list[str],
-    typography_template_list: list[str],
-    outline: str,
+    video_style: str = "cinematic",
+    visual_type_weights: dict[str, float] | None = None,
+    allowed_templates: list[str] | None = None,
+    default_camera_pacing: str = "fast",
+    rig_action_list: list[str] | None = None,
+    typography_template_list: list[str] | None = None,
+    outline: str = "",
     generation_profile: dict[str, Any] | None = None,
     # Legacy fallback
     duration_target_minutes: int = 1,
@@ -175,44 +175,38 @@ def build_script_director_prompt(
 
     effective_word_count = approx_word_count or round((target_seconds / 60) * words_per_minute)
     strategy = _get_strategy_instructions(profile.get("content_strategy", "short_form"))
-    weights_summary = ", ".join(f"{k}: {int(v * 100)}%" for k, v in visual_type_weights.items())
 
     system_prompt = (
-        "You are a master video scriptwriter and visual director, specializing in high-retention narration.\n\n"
+        "You are an elite video scriptwriter and visual director creating high-retention, cinematic video content.\n\n"
         "Your output must strictly conform to valid JSON following the schema provided.\n\n"
         f"{strategy}\n\n"
-        "For every scene, in the SAME PASS as writing the narrative text, decide:\n"
-        "- visual_type: constrained to the allowed types for the given style\n"
-        "- The appropriate template parameter (animation_action, camera_style, or typography_template)\n"
-        "- transition and emotional_tone\n\n"
+        "VISUAL DIRECTION INSTRUCTIONS:\n"
+        "For every scene, in the SAME PASS as writing the narrative text, you have creative freedom to choose the optimal visual_type:\n"
+        "- 'broll': Cinematic real-world HD stock video footage (action, nature, cities, human gestures, objects, technology).\n"
+        "- 'stock_photo': High-impact crisp stock photography (macro close-ups, portrait expressions, historical contexts).\n"
+        "- 'ai_image': Generative AI artwork (abstract concepts, surreal metaphors, internal anatomy/science, futuristic visualizations).\n"
+        "- 'kinetic_typography': Dynamic typographic punchlines for critical hooks or statistics.\n\n"
+        "CRITICAL ASSET SPECIFICATIONS FOR EVERY SCENE:\n"
+        "1. 'broll_search_keywords': 3-5 concise, specific keywords for stock media search (e.g., 'caffeine coffee espresso pour macro 4k' or 'tired person brain exhaustion concept').\n"
+        "2. 'visual_prompt': A rich, highly-detailed prompt suitable for AI image generation (describing subject, lighting, mood, color palette, cinematic 8k render style).\n"
+        "3. 'camera_style': Choose one of ['zoom_in_slow', 'zoom_out_slow', 'pan_left_slow', 'pan_right_slow', 'static_hold'].\n\n"
         "Rules:\n"
-        "- Never invent a template parameter not in the provided allowed lists.\n"
-        "- Never include markdown code blocks or conversational preamble in your response.\n"
+        "- Never include markdown code blocks or conversational preamble.\n"
         "- Output only the raw JSON object.\n"
-        f"- Each scene narration should be tight and punchy — suitable for {min_cut}-{max_cut} second visual cuts.\n"
-        f"- Total word count across all scenes must reach approximately {effective_word_count} words."
+        f"- Each scene narration must be tight and punchy ({min_cut}-{max_cut} seconds per visual cut).\n"
+        f"- Total narration word count across all scenes must reach approximately {effective_word_count} words."
     )
 
-    allowed_templates_str = ", ".join(allowed_templates)
-    rig_action_str = f"Animation actions (for character_animation scenes): {', '.join(rig_action_list)}" if rig_action_list else ""
-    typography_str = f"Typography templates (for kinetic_typography scenes): {', '.join(typography_template_list)}" if typography_template_list else ""
     platform_str = f"{platform.get('platform', 'generic')} ({platform.get('aspect_ratio', '9:16')}, {platform.get('width', 1080)}x{platform.get('height', 1920)})"
 
     user_prompt = (
         "Write a complete video script with visual direction for the following:\n\n"
         f"TOPIC: {topic}\n"
         f"LANGUAGE: {language}\n"
-        f"VIDEO STYLE: {video_style}\n"
         f"TARGET DURATION: {target_seconds} seconds (~{effective_word_count} words total)\n"
         f"CAMERA PACING: {default_camera_pacing}\n"
         f"NARRATIVE STYLE: {narrative_style}\n"
         f"PLATFORM: {platform_str}\n\n"
-        f"VISUAL TYPE DISTRIBUTION (approximate):\n{weights_summary}\n\n"
-        "AVAILABLE TEMPLATES:\n"
-        f"Allowed visual types: {allowed_templates_str}\n"
-        f"{rig_action_str}\n"
-        f"{typography_str}\n"
-        "Camera styles (for broll/ai_image scenes): pan_left_slow, pan_right_slow, zoom_in_slow, zoom_out_slow, static_hold\n\n"
         f"OUTLINE TO FOLLOW:\n{outline}\n\n"
         "Output a JSON object with this exact structure:\n"
         "{\n"
@@ -221,15 +215,14 @@ def build_script_director_prompt(
         "    {\n"
         '      "sequence_number": 1,\n'
         '      "script_segment": "string — narration text for this scene",\n'
-        '      "visual_type": "character_animation | broll | ai_image | kinetic_typography",\n'
-        '      "animation_action": "string | null — only for character_animation",\n'
-        '      "camera_style": "string | null — only for broll or ai_image",\n'
-        '      "typography_template": "string | null — only for kinetic_typography",\n'
+        '      "visual_type": "broll | stock_photo | ai_image | kinetic_typography",\n'
+        '      "camera_style": "zoom_in_slow | zoom_out_slow | pan_left_slow | pan_right_slow | static_hold",\n'
+        '      "typography_template": null,\n'
         '      "background_broll_url": null,\n'
         '      "transition": "fade | cut | wipe",\n'
         '      "emotional_tone": "string",\n'
-        '      "broll_search_keywords": "string | null — comma-separated keywords for stock search",\n'
-        '      "visual_prompt": "string | null — only for ai_image, detailed generation prompt"\n'
+        '      "broll_search_keywords": "string — 3 to 5 specific search terms",\n'
+        '      "visual_prompt": "string — detailed cinematic AI prompt"\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
@@ -237,3 +230,4 @@ def build_script_director_prompt(
     )
 
     return RenderedPrompt(system_prompt=system_prompt, user_prompt=user_prompt)
+
