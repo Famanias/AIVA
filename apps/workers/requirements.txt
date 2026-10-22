@@ -5,7 +5,7 @@ pydantic>=2.11.7,<3.0.0
 pydantic-settings==2.4.0
 
 # Async utilities
-anyio==4.6.0
+anyio==4.14.2
 
 # LLM providers
 openai==1.51.0  # OpenAI-compatible protocol (OpenRouter, Groq, OmniRoute, Ollama /v1, OpenAI)
@@ -21,11 +21,11 @@ edge-tts>=7.0.0
 faster-whisper==1.0.3
 
 # B-roll matching
-sentence-transformers==3.1.1
+sentence-transformers==5.6.0
 numpy==1.26.4
 
 # Image processing
-Pillow==10.4.0
+Pillow==13.0.0
 
 # Audio processing (loudness normalization)
 pyloudnorm==0.1.1
@@ -43,7 +43,7 @@ cryptography>=42.0.0
 redis==5.1.0
 
 # Utilities
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 structlog==24.4.0
 
 tenacity<9.0.0   # retry with exponential backoff
